@@ -10,6 +10,8 @@ LV_FONT_DECLARE(lv_font_montserrat_20_latin);
 LV_FONT_DECLARE(lv_font_montserrat_16_latin);
 // Just the four FontAwesome glyphs the preset tiles use -- see the header of the .c file.
 LV_FONT_DECLARE(lv_font_preset_icons_26);
+// Prev/play/pause/next only, sized for the media controls over the art.
+LV_FONT_DECLARE(lv_font_media_icons_36);
 // Digits 0-9 only, for the big volume readout on the full-screen art page.
 LV_FONT_DECLARE(lv_font_montserrat_96_digits);
 
@@ -224,13 +226,16 @@ lv_obj_t *makeBadge(lv_obj_t *parent, int size, int xOffset, int yOffset) {
 
 // A borderless hit target sitting on the transparent control bar -- not a visible round
 // button, just an icon plus enough tappable area around it.
-lv_obj_t *makeBarIcon(lv_obj_t *bar, int xOffset, const char *symbol, lv_event_cb_t cb,
-                      lv_obj_t **iconOut = nullptr) {
+lv_obj_t *makeMediaButton(lv_obj_t *bar, int xOffset, int size, const char *symbol, lv_event_cb_t cb,
+                          bool filled, lv_obj_t **iconOut = nullptr) {
   lv_obj_t *hit = lv_obj_create(bar);
-  lv_obj_set_size(hit, 44, 44);
+  lv_obj_set_size(hit, size, size);
   lv_obj_set_style_radius(hit, LV_RADIUS_CIRCLE, 0);
-  lv_obj_set_style_bg_opa(hit, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_bg_color(hit, lv_color_white(), 0);
+  lv_obj_set_style_bg_opa(hit, filled ? LV_OPA_90 : LV_OPA_TRANSP, 0);
+  lv_obj_set_style_bg_opa(hit, filled ? LV_OPA_60 : LV_OPA_20, LV_STATE_PRESSED);
   lv_obj_set_style_border_width(hit, 0, 0);
+  lv_obj_set_style_pad_all(hit, 0, 0);
   lv_obj_align(hit, LV_ALIGN_CENTER, xOffset, 0);
   lv_obj_clear_flag(hit, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_flag(hit, LV_OBJ_FLAG_GESTURE_BUBBLE); // a swipe starting here still changes screens
@@ -238,8 +243,8 @@ lv_obj_t *makeBarIcon(lv_obj_t *bar, int xOffset, const char *symbol, lv_event_c
 
   lv_obj_t *icon = lv_label_create(hit);
   lv_label_set_text(icon, symbol);
-  lv_obj_set_style_text_font(icon, &lv_font_montserrat_20, 0);
-  lv_obj_set_style_text_color(icon, lv_color_white(), 0);
+  lv_obj_set_style_text_font(icon, &lv_font_media_icons_36, 0);
+  lv_obj_set_style_text_color(icon, filled ? lv_color_hex(0x111111) : lv_color_white(), 0);
   lv_obj_center(icon);
   if (iconOut) *iconOut = icon;
   return hit;
@@ -423,7 +428,7 @@ void begin(const Callbacks &cbs) {
   volumeLabel = lv_label_create(ctrl);
   lv_obj_set_style_text_font(volumeLabel, &lv_font_montserrat_96_digits, 0);
   lv_obj_set_style_text_color(volumeLabel, lv_color_white(), 0);
-  lv_obj_align(volumeLabel, LV_ALIGN_CENTER, 0, -45);
+  lv_obj_align(volumeLabel, LV_ALIGN_CENTER, 0, -50);
   lv_label_set_text(volumeLabel, "");
 
   batteryBadge = makeBadge(ctrl, 44, 0, -122);
@@ -490,7 +495,7 @@ void begin(const Callbacks &cbs) {
   lv_obj_set_style_text_align(titleLabel, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_set_style_text_font(titleLabel, &lv_font_montserrat_20_latin, 0);
   lv_obj_set_style_text_color(titleLabel, lv_color_white(), 0);
-  lv_obj_align(titleLabel, LV_ALIGN_CENTER, 0, 30);
+  lv_obj_align(titleLabel, LV_ALIGN_CENTER, 0, 22);
   lv_label_set_text(titleLabel, "Not playing");
 
   artistLabel = lv_label_create(ctrl);
@@ -499,33 +504,32 @@ void begin(const Callbacks &cbs) {
   lv_obj_set_style_text_align(artistLabel, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_set_style_text_font(artistLabel, &lv_font_montserrat_16_latin, 0);
   lv_obj_set_style_text_color(artistLabel, lv_color_hex(0xc8c8c8), 0);
-  lv_obj_align(artistLabel, LV_ALIGN_CENTER, 0, 53);
+  lv_obj_align(artistLabel, LV_ALIGN_CENTER, 0, 46);
   lv_label_set_text(artistLabel, "");
 
-  // Under the control bar, where the circle is only ~200px wide.
+  // Under the media buttons, where the circle is only ~160px wide.
   albumLabel = lv_label_create(ctrl);
-  lv_obj_set_width(albumLabel, 170);
+  lv_obj_set_width(albumLabel, 150);
   lv_label_set_long_mode(albumLabel, LV_LABEL_LONG_SCROLL_CIRCULAR);
   lv_obj_set_style_text_align(albumLabel, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_set_style_text_font(albumLabel, &lv_font_montserrat_16_latin, 0);
   lv_obj_set_style_text_color(albumLabel, lv_color_hex(0x9a9a9a), 0);
-  lv_obj_align(albumLabel, LV_ALIGN_CENTER, 0, 146);
+  lv_obj_align(albumLabel, LV_ALIGN_CENTER, 0, 152);
   lv_label_set_text(albumLabel, "");
 
   lv_obj_t *controlBar = lv_obj_create(ctrl);
-  lv_obj_set_size(controlBar, 220, 56);
-  lv_obj_set_style_radius(controlBar, 28, 0);
-  lv_obj_set_style_bg_color(controlBar, lv_color_white(), 0);
-  lv_obj_set_style_bg_opa(controlBar, LV_OPA_10, 0);
+  lv_obj_set_size(controlBar, 250, 76);
+  lv_obj_set_style_bg_opa(controlBar, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(controlBar, 0, 0);
-  lv_obj_align(controlBar, LV_ALIGN_BOTTOM_MID, 0, -47);
+  lv_obj_set_style_pad_all(controlBar, 0, 0);
+  lv_obj_align(controlBar, LV_ALIGN_CENTER, 0, 100);
   lv_obj_clear_flag(controlBar, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_clear_flag(controlBar, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_flag(controlBar, LV_OBJ_FLAG_GESTURE_BUBBLE);
 
-  makeBarIcon(controlBar, -66, LV_SYMBOL_PREV, onPrevClicked);
-  makeBarIcon(controlBar, 0, LV_SYMBOL_PLAY, onPlayPauseClicked, &playPauseIcon);
-  makeBarIcon(controlBar, 66, LV_SYMBOL_NEXT, onNextClicked);
+  makeMediaButton(controlBar, -88, 64, LV_SYMBOL_PREV, onPrevClicked, false);
+  makeMediaButton(controlBar, 0, 72, LV_SYMBOL_PLAY, onPlayPauseClicked, true, &playPauseIcon);
+  makeMediaButton(controlBar, 88, 64, LV_SYMBOL_NEXT, onNextClicked, false);
 
   makePageDots(ctrl, kNowPlaying);
   lv_timer_create(controlsTimerCb, 250, NULL);
