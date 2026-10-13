@@ -13,9 +13,11 @@ namespace {
 
 uint32_t lastActivityMs = 0;
 bool screenOn = true;
+uint32_t screenTimeoutMs = (uint32_t)SCREEN_TIMEOUT_S * 1000;
+uint32_t sleepTimeoutMs = (uint32_t)DEEP_SLEEP_TIMEOUT_MIN * 60000UL;
 
 void enterDeepSleep(const char *reason) {
-  display::setBacklight(0);
+  display::setBacklightOn(false);
 
   // Wake on the same GPIOs the knob and touch controller already pulse low during normal
   // operation (see Pins.h) -- no extra wiring or wake button needed. ANY_LOW: wake as soon as
@@ -53,7 +55,7 @@ void begin() { lastActivityMs = millis(); }
 void noteActivity() {
   lastActivityMs = millis();
   if (!screenOn) {
-    display::setBacklight(255);
+    display::setBacklightOn(true);
     screenOn = true;
   }
 }
@@ -61,16 +63,20 @@ void noteActivity() {
 void service() {
   uint32_t idleMs = millis() - lastActivityMs;
 
-  if (screenOn && idleMs > (uint32_t)SCREEN_TIMEOUT_S * 1000) {
-    display::setBacklight(0);
+  if (screenOn && idleMs > screenTimeoutMs) {
+    display::setBacklightOn(false);
     screenOn = false;
   }
 
-  if (idleMs > (uint32_t)DEEP_SLEEP_TIMEOUT_MIN * 60000UL) {
+  if (idleMs > sleepTimeoutMs) {
     enterDeepSleep("Idle timeout reached");
   }
 }
 
 bool isScreenOn() { return screenOn; }
+
+void setScreenTimeout(uint32_t seconds) { screenTimeoutMs = seconds * 1000; }
+
+void setSleepTimeout(uint32_t minutes) { sleepTimeoutMs = minutes * 60000UL; }
 
 } // namespace power

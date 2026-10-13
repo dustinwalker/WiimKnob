@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stdint.h>
+
 namespace power {
 
 // Starts the inactivity clock. Call once from setup(), after display::begin().
@@ -9,10 +11,14 @@ void begin();
 // if the screen had timed out, turns the backlight back on.
 void noteActivity();
 
-// Call every loop() iteration. Turns the backlight off after SCREEN_TIMEOUT_S of inactivity,
-// and puts the board into deep sleep after DEEP_SLEEP_TIMEOUT_MIN (both in Config.h). Deep
-// sleep never returns -- the board reboots into setup() when a wake source fires.
+// Call every loop() iteration. Turns the backlight off after the screen timeout, and puts the
+// board into deep sleep after the sleep timeout. Deep sleep never returns -- the board reboots
+// into setup() when a wake source fires.
 void service();
+
+// Defaults are SCREEN_TIMEOUT_S and DEEP_SLEEP_TIMEOUT_MIN from Config.h.
+void setScreenTimeout(uint32_t seconds);
+void setSleepTimeout(uint32_t minutes);
 
 // Whether the backlight is currently on. Useful for callers that want to skip work that only
 // matters while something is actually visible (see main.cpp's loop(), which stops pumping

@@ -22,6 +22,10 @@ lv_color_t *buf2 = nullptr;
 // (which would be 253KB per buffer -- fine in PSRAM, but unnecessary for this UI).
 constexpr int kBufRows = 60;
 
+constexpr uint32_t kBacklightPwmHz = 20000; // above hearing, and too fast to see flicker
+uint8_t brightnessPercent = 100;
+bool backlightOn = false;
+
 // Pixels go out on our own SPI device from a task on the other core, so LVGL renders the next
 // band while this one transfers. Arduino_GFX's own path sends 2KB at a time and waits on each,
 // which cost ~17ms of every full-screen frame; it's only used for the panel's init sequence now.
@@ -105,8 +109,8 @@ void flushCb(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *color_p) {
 } // namespace
 
 void begin() {
-  pinMode(PIN_LCD_BACKLIGHT, OUTPUT);
-  digitalWrite(PIN_LCD_BACKLIGHT, LOW); // keep the panel dark until it's initialised
+  ledcAttach(PIN_LCD_BACKLIGHT, kBacklightPwmHz, 8);
+  ledcWrite(PIN_LCD_BACKLIGHT, 0); // keep the panel dark until it's initialised
 
   // Shared, so Arduino_GFX doesn't hold the bus and pixelDev can use it after init.
   bus = new Arduino_ESP32QSPI(PIN_LCD_CS, PIN_LCD_SCK, PIN_LCD_D0, PIN_LCD_D1, PIN_LCD_D2, PIN_LCD_D3,
@@ -137,7 +141,7 @@ void begin() {
   jobs = xQueueCreate(1, sizeof(FlushJob));
   xTaskCreatePinnedToCore(flushTask, "lcdflush", 3072, nullptr, configMAX_PRIORITIES - 2, nullptr, 0);
 
-  setBacklight(255);
+  setBacklightOn(true);
 
   lv_init();
 
@@ -158,9 +162,17 @@ void tick() { lv_timer_handler(); }
 
 void refreshNow() { lv_refr_now(NULL); }
 
-void setBacklight(uint8_t brightness) {
-  // Simple on/off for now -- see DisplayDriver.h if you want to add LEDC PWM dimming later.
-  digitalWrite(PIN_LCD_BACKLIGHT, brightness > 0 ? HIGH : LOW);
+void setBacklightOn(bool on) {
+  backlightOn = on;
+  // Squared so the low end of the percentage range gets most of the duty steps, roughly
+  // matching how the eye perceives brightness.
+  uint32_t duty = (uint32_t)brightnessPercent * brightnessPercent * 255 / 10000;
+  ledcWrite(PIN_LCD_BACKLIGHT, on ? max<uint32_t>(duty, 2) : 0);
+}
+
+void setBrightness(uint8_t percent) {
+  brightnessPercent = constrain(percent, 1, 100);
+  if (backlightOn) setBacklightOn(true);
 }
 
 } // namespace display

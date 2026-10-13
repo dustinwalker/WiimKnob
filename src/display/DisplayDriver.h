@@ -15,7 +15,8 @@ void tick();
 // should show up with no extra delay (knob turns).
 void refreshNow();
 
-// Backlight brightness, 0-255.
-void setBacklight(uint8_t brightness);
+void setBacklightOn(bool on);
+// 1-100, applied now if the backlight is on and remembered for when it next turns on.
+void setBrightness(uint8_t percent);
 
 } // namespace display
