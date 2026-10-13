@@ -49,9 +49,9 @@ void setPlaying(bool playing);
 void setConnected(bool connected); // small dot at the top of the controls
 
 // Battery-shaped icon with a proportional, color-coded fill; tap toggles it to a plain
-// percentage (tap again to go back). charging pulses it -- see the caveat on
-// Reading::charging in Battery.h about how that's actually detected.
-void setBattery(int percent0to100, bool charging);
+// percentage (tap again to go back). onUsbPower adds a bolt: charging or already full, which
+// this board can't tell apart (see Reading::externalPower in Battery.h).
+void setBattery(int percent0to100, bool onUsbPower);
 
 // Settings page: one row per setting, a row selected by tapping it. The knob adjusts the
 // selected row while this page is showing (see isSettingsActive()).

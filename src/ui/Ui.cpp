@@ -63,7 +63,7 @@ lv_obj_t *batteryIconOutline = nullptr;
 lv_obj_t *batteryIconNub = nullptr;
 lv_obj_t *batteryFill = nullptr;
 lv_obj_t *batteryPercentLabel = nullptr;
-bool batteryChargingAnimRunning = false;
+lv_obj_t *batteryBolt = nullptr;
 bool showingBatteryPercent = false;
 
 // Recently played.
@@ -272,7 +272,6 @@ void setArtOn(lv_obj_t *img, const lv_img_dsc_t *art, int coverSize) {
   lv_obj_clear_flag(img, LV_OBJ_FLAG_HIDDEN);
 }
 
-void batteryPulseAnimCb(void *var, int32_t v) { lv_obj_set_style_bg_opa((lv_obj_t *)var, v, 0); }
 
 void markLastFired(lv_obj_t *tile) {
   if (lastFiredTile) {
@@ -499,6 +498,14 @@ void begin(const Callbacks &cbs) {
   lv_obj_align(batteryFill, LV_ALIGN_LEFT_MID, 3, 0);
   lv_obj_clear_flag(batteryFill, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_clear_flag(batteryFill, LV_OBJ_FLAG_CLICKABLE);
+
+  // A child of the outline, so it hides along with it when the badge flips to a percentage.
+  batteryBolt = lv_label_create(batteryIconOutline);
+  lv_obj_set_style_text_font(batteryBolt, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_text_color(batteryBolt, lv_color_white(), 0);
+  lv_label_set_text(batteryBolt, LV_SYMBOL_CHARGE);
+  lv_obj_center(batteryBolt);
+  lv_obj_add_flag(batteryBolt, LV_OBJ_FLAG_HIDDEN);
 
   batteryPercentLabel = lv_label_create(batteryBadge);
   lv_obj_set_style_text_font(batteryPercentLabel, &lv_font_montserrat_14, 0);
@@ -815,7 +822,7 @@ void setConnected(bool connected) {
                              connected ? lv_palette_main(LV_PALETTE_GREEN) : lv_palette_main(LV_PALETTE_RED), 0);
 }
 
-void setBattery(int percent0to100, bool charging) {
+void setBattery(int percent0to100, bool onUsbPower) {
   if (percent0to100 < 0) percent0to100 = 0;
   if (percent0to100 > 100) percent0to100 = 100;
 
@@ -829,27 +836,16 @@ void setBattery(int percent0to100, bool charging) {
   } else if (percent0to100 <= 35) {
     color = 0xEF9F27; // amber
   }
-  uint32_t litColor = charging ? 0x97C459 : color; // brighter green while charging
-  lv_obj_set_style_bg_color(batteryFill, lv_color_hex(litColor), 0);
+  lv_obj_set_style_bg_color(batteryFill, lv_color_hex(color), 0);
+  lv_obj_set_style_bg_opa(batteryFill, onUsbPower ? LV_OPA_50 : LV_OPA_COVER, 0); // lets the bolt stand out
+
+  if (onUsbPower) {
+    lv_obj_clear_flag(batteryBolt, LV_OBJ_FLAG_HIDDEN);
+  } else {
+    lv_obj_add_flag(batteryBolt, LV_OBJ_FLAG_HIDDEN);
+  }
 
   lv_label_set_text_fmt(batteryPercentLabel, "%d%%", percent0to100);
-
-  if (charging && !batteryChargingAnimRunning) {
-    lv_anim_t a;
-    lv_anim_init(&a);
-    lv_anim_set_var(&a, batteryBadge);
-    lv_anim_set_exec_cb(&a, batteryPulseAnimCb);
-    lv_anim_set_values(&a, LV_OPA_40, LV_OPA_COVER);
-    lv_anim_set_time(&a, 700);
-    lv_anim_set_playback_time(&a, 700);
-    lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
-    lv_anim_start(&a);
-    batteryChargingAnimRunning = true;
-  } else if (!charging && batteryChargingAnimRunning) {
-    lv_anim_del(batteryBadge, batteryPulseAnimCb);
-    lv_obj_set_style_bg_opa(batteryBadge, LV_OPA_COVER, 0);
-    batteryChargingAnimRunning = false;
-  }
 }
 
 } // namespace ui
