@@ -50,6 +50,7 @@ lv_obj_t *volumeArc = nullptr;
 lv_obj_t *volumeLabel = nullptr;
 lv_obj_t *titleLabel = nullptr;
 lv_obj_t *artistLabel = nullptr;
+lv_obj_t *albumLabel = nullptr;
 lv_obj_t *playPauseIcon = nullptr;
 lv_obj_t *statusDot = nullptr;
 lv_obj_t *batteryBadge = nullptr;      // clickable: taps toggle icon <-> percent
@@ -486,6 +487,16 @@ void begin(const Callbacks &cbs) {
   lv_obj_align(artistLabel, LV_ALIGN_CENTER, 0, 53);
   lv_label_set_text(artistLabel, "");
 
+  // Under the control bar, where the circle is only ~200px wide.
+  albumLabel = lv_label_create(ctrl);
+  lv_obj_set_width(albumLabel, 170);
+  lv_label_set_long_mode(albumLabel, LV_LABEL_LONG_SCROLL_CIRCULAR);
+  lv_obj_set_style_text_align(albumLabel, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_text_font(albumLabel, &lv_font_montserrat_16_latin, 0);
+  lv_obj_set_style_text_color(albumLabel, lv_color_hex(0x9a9a9a), 0);
+  lv_obj_align(albumLabel, LV_ALIGN_CENTER, 0, 146);
+  lv_label_set_text(albumLabel, "");
+
   lv_obj_t *controlBar = lv_obj_create(ctrl);
   lv_obj_set_size(controlBar, 220, 56);
   lv_obj_set_style_radius(controlBar, 28, 0);
@@ -637,9 +648,10 @@ void setPresets(const PresetTile *tiles, int count) {
   }
 }
 
-void setTrack(const char *title, const char *artist) {
+void setTrack(const char *title, const char *artist, const char *album) {
   lv_label_set_text(titleLabel, (title && title[0]) ? title : "Not playing");
   lv_label_set_text(artistLabel, artist ? artist : "");
+  lv_label_set_text(albumLabel, album ? album : "");
 }
 
 void setAlbumArt(const lv_img_dsc_t *art, const lv_img_dsc_t *tinted) {
