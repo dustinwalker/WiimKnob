@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <ArduinoOTA.h>
+#include <WebServer.h>
 #include <WiFi.h>
 #include <lvgl.h>
 
@@ -221,6 +222,25 @@ void beginOta() {
   ArduinoOTA.begin();
 }
 
+// Read-only diagnostics at http://wiimknob.local/status, for checking on the knob without a
+// USB cable (its serial log is only reachable over USB).
+WebServer statusServer(80);
+power::battery::Reading lastBattery;
+
+void beginStatusServer() {
+  statusServer.on("/status", HTTP_GET, []() {
+    char body[256];
+    snprintf(body, sizeof(body),
+             "{\"voltage\":%.3f,\"percent\":%d,\"charging\":%s,\"uptime_s\":%lu,"
+             "\"heap_internal\":%u,\"heap_internal_min\":%u,\"rssi\":%d}\n",
+             lastBattery.voltage, lastBattery.percent, lastBattery.charging ? "true" : "false",
+             millis() / 1000, (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+             (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL), WiFi.RSSI());
+    statusServer.send(200, "application/json", body);
+  });
+  statusServer.begin();
+}
+
 void connectWiFi() {
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
@@ -288,6 +308,7 @@ void serviceBattery() {
   }
   lastBatteryPollMs = now;
   power::battery::Reading reading = power::battery::read();
+  lastBattery = reading;
   ui::setBattery(reading.percent, reading.charging);
 
   // Not shown on screen anymore (see the battery screen removal) -- kept here so the raw
@@ -327,6 +348,7 @@ void setup() {
 
   connectWiFi();
   beginOta();
+  beginStatusServer();
 
   wiim::task::begin();
 }
@@ -356,6 +378,7 @@ void loop() {
   power::service();
   settings::service();
   ArduinoOTA.handle();
+  statusServer.handleClient();
 
   delay(5);
 }
