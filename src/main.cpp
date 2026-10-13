@@ -204,12 +204,20 @@ void beginOta() {
 #ifdef OTA_PASSWORD
   ArduinoOTA.setPassword(OTA_PASSWORD);
 #endif
-  ArduinoOTA.onStart([]() { Serial.println("[ota] update starting"); });
+  ArduinoOTA.onStart([]() {
+    // Modem sleep adds hundreds of ms of latency, enough to break the upload's TCP stream
+    // partway through. The knob reboots afterwards, which restores the default.
+    WiFi.setSleep(false);
+    Serial.println("[ota] update starting");
+  });
   ArduinoOTA.onProgress([](unsigned int done, unsigned int total) {
     power::noteActivity(); // don't time out into deep sleep mid-update
   });
   ArduinoOTA.onEnd([]() { Serial.println("[ota] done, rebooting"); });
-  ArduinoOTA.onError([](ota_error_t err) { Serial.printf("[ota] error %u\n", err); });
+  ArduinoOTA.onError([](ota_error_t err) {
+    WiFi.setSleep(true);
+    Serial.printf("[ota] error %u\n", err);
+  });
   ArduinoOTA.begin();
 }
 
