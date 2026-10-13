@@ -10,6 +10,7 @@ struct Callbacks {
   void (*onPlayPause)();
   void (*onPreset)(int key); // 1-based preset slot
   void (*onRecent)(int id);  // RecentTile::id of the tapped album
+  void (*onSettingTapped)(int index);
 };
 
 enum class PresetIcon { kDisc, kHeadphones, kEq, kMusic };
@@ -51,5 +52,12 @@ void setConnected(bool connected); // small dot at the top of the controls
 // percentage (tap again to go back). charging pulses it -- see the caveat on
 // Reading::charging in Battery.h about how that's actually detected.
 void setBattery(int percent0to100, bool charging);
+
+// Settings page: one row per setting, a row selected by tapping it. The knob adjusts the
+// selected row while this page is showing (see isSettingsActive()).
+void setSettings(const char *const *labels, int count);
+void setSettingValue(int index, const char *text);
+void setSelectedSetting(int index);
+bool isSettingsActive();
 
 } // namespace ui

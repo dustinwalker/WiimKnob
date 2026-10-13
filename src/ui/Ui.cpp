@@ -31,7 +31,8 @@ constexpr uint32_t kBatteryGreen = 0x639922;
 constexpr int kNowPlaying = 0;
 constexpr int kRecent = 1;
 constexpr int kPresets = 2;
-constexpr int kScreenCount = 3;
+constexpr int kSettings = 3;
+constexpr int kScreenCount = 4;
 
 lv_obj_t *screens[kScreenCount];
 int activeScreen = kNowPlaying;
@@ -74,6 +75,12 @@ lv_obj_t *presetEmptyLabel = nullptr;
 lv_obj_t *lastFiredTile = nullptr; // red border: last preset fired from here, not "active" --
                                    // the WiiM doesn't report which preset is currently in effect
 int lastFiredKey = 0;               // survives a grid rebuild
+
+// Settings.
+constexpr int kMaxSettings = 6;
+lv_obj_t *settingRows[kMaxSettings] = {};
+lv_obj_t *settingValues[kMaxSettings] = {};
+int settingCount = 0;
 
 constexpr int kBattIconW = 32, kBattIconH = 18;
 constexpr int kBattFillMaxW = kBattIconW - 6; // inset from the outline's border
@@ -297,6 +304,14 @@ void onRecentClicked(lv_event_t *e) {
     setRecentRing(recentTiles[i], recentTiles[i] == tile);
   }
   if (callbacks.onRecent) callbacks.onRecent((int)(intptr_t)lv_event_get_user_data(e));
+}
+
+void onSettingClicked(lv_event_t *e) {
+  lv_indev_t *indev = lv_indev_get_act();
+  if (indev && lv_indev_get_gesture_dir(indev) != LV_DIR_NONE) {
+    return; // the tail end of a swipe, not a tap -- see onPresetClicked
+  }
+  if (callbacks.onSettingTapped) callbacks.onSettingTapped((int)(intptr_t)lv_event_get_user_data(e));
 }
 
 const char *presetIconGlyph(PresetIcon icon) {
@@ -576,6 +591,23 @@ void begin(const Callbacks &cbs) {
 
   makePageDots(pres, kPresets);
 
+  // ---- Settings ----
+  lv_obj_t *set = screens[kSettings];
+
+  lv_obj_t *settingsTitle = lv_label_create(set);
+  lv_obj_set_style_text_font(settingsTitle, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_text_color(settingsTitle, lv_color_hex(0xb4b2a9), 0);
+  lv_label_set_text(settingsTitle, "Settings");
+  lv_obj_align(settingsTitle, LV_ALIGN_TOP_MID, 0, 46);
+
+  lv_obj_t *settingsHint = lv_label_create(set);
+  lv_obj_set_style_text_font(settingsHint, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_text_color(settingsHint, lv_color_hex(0x707070), 0);
+  lv_label_set_text(settingsHint, "Tap a row, turn to adjust");
+  lv_obj_align(settingsHint, LV_ALIGN_BOTTOM_MID, 0, -50);
+
+  makePageDots(set, kSettings);
+
   lv_scr_load(screens[kNowPlaying]);
 }
 
@@ -647,6 +679,57 @@ void setPresets(const PresetTile *tiles, int count) {
     lv_obj_add_flag(presetEmptyLabel, LV_OBJ_FLAG_HIDDEN);
   }
 }
+
+void setSettings(const char *const *labels, int count) {
+  if (count > kMaxSettings) count = kMaxSettings;
+  settingCount = count;
+  constexpr int kRowH = 46, kGap = 6;
+  int top = -((count * kRowH + (count - 1) * kGap) / 2) + kRowH / 2;
+  for (int i = 0; i < count; i++) {
+    lv_obj_t *row = lv_obj_create(screens[kSettings]);
+    lv_obj_set_size(row, 270, kRowH);
+    lv_obj_set_style_radius(row, 14, 0);
+    lv_obj_set_style_bg_color(row, lv_color_white(), 0);
+    lv_obj_set_style_bg_opa(row, LV_OPA_10, 0);
+    lv_obj_set_style_bg_opa(row, LV_OPA_20, LV_STATE_PRESSED);
+    lv_obj_set_style_border_width(row, 2, 0);
+    lv_obj_set_style_border_color(row, lv_color_hex(kAccentColor), 0);
+    lv_obj_set_style_border_opa(row, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_pad_hor(row, 16, 0);
+    lv_obj_align(row, LV_ALIGN_CENTER, 0, top + i * (kRowH + kGap));
+    lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(row, LV_OBJ_FLAG_GESTURE_BUBBLE);
+    lv_obj_add_event_cb(row, onSettingClicked, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+
+    lv_obj_t *name = lv_label_create(row);
+    lv_obj_set_style_text_font(name, &lv_font_montserrat_16_latin, 0);
+    lv_obj_set_style_text_color(name, lv_color_white(), 0);
+    lv_label_set_text(name, labels[i]);
+    lv_obj_align(name, LV_ALIGN_LEFT_MID, 0, 0);
+
+    lv_obj_t *val = lv_label_create(row);
+    lv_obj_set_style_text_font(val, &lv_font_montserrat_16_latin, 0);
+    lv_obj_set_style_text_color(val, lv_color_hex(0xc8c8c8), 0);
+    lv_label_set_text(val, "");
+    lv_obj_align(val, LV_ALIGN_RIGHT_MID, 0, 0);
+
+    settingRows[i] = row;
+    settingValues[i] = val;
+  }
+}
+
+void setSettingValue(int index, const char *text) {
+  if (index < 0 || index >= settingCount) return;
+  lv_label_set_text(settingValues[index], text);
+}
+
+void setSelectedSetting(int index) {
+  for (int i = 0; i < settingCount; i++) {
+    lv_obj_set_style_border_opa(settingRows[i], i == index ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+  }
+}
+
+bool isSettingsActive() { return activeScreen == kSettings; }
 
 void setTrack(const char *title, const char *artist, const char *album) {
   lv_label_set_text(titleLabel, (title && title[0]) ? title : "Not playing");

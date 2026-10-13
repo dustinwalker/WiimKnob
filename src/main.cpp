@@ -3,15 +3,13 @@
 #include <lvgl.h>
 
 #include "Config.h"
-#ifndef CONTROLS_TIMEOUT_S
-#define CONTROLS_TIMEOUT_S 8 // for a Config.h made before this setting existed
-#endif
 #include "display/DisplayDriver.h"
 #include "haptics/Haptics.h"
 #include "input/Knob.h"
 #include "input/Touch.h"
 #include "power/Battery.h"
 #include "power/Power.h"
+#include "settings/Settings.h"
 #include "ui/Ui.h"
 #include "wiim/WiimTask.h"
 
@@ -61,6 +59,37 @@ void onPreset(int key) {
 }
 void onRecent(int slot) {
   wiim::task::requestRecent(slot);
+  haptics::buzz();
+}
+
+int selectedSetting = settings::kBrightness;
+
+void applySetting(settings::Item item) {
+  int v = settings::value(item);
+  switch (item) {
+  case settings::kBrightness:
+    display::setBrightness(v);
+    break;
+  case settings::kControlsTimeout:
+    ui::setControlsTimeout(v);
+    break;
+  case settings::kScreenTimeout:
+    power::setScreenTimeout(v);
+    break;
+  case settings::kSleepTimeout:
+    power::setSleepTimeout(v);
+    break;
+  default:
+    break;
+  }
+  char text[16];
+  settings::format(item, text, sizeof(text));
+  ui::setSettingValue(item, text);
+}
+
+void onSettingTapped(int index) {
+  selectedSetting = index;
+  ui::setSelectedSetting(index);
   haptics::buzz();
 }
 
@@ -208,8 +237,16 @@ void serviceKnob() {
   if (delta == 0) {
     return;
   }
-  lastKnobActivityMs = millis();
+  bool screenWasOn = power::isScreenOn(); // a blind turn in the dark stays volume, not settings
   power::noteActivity();
+  if (screenWasOn && ui::isSettingsActive()) {
+    if (settings::step((settings::Item)selectedSetting, delta)) {
+      applySetting((settings::Item)selectedSetting);
+    }
+    display::refreshNow();
+    return;
+  }
+  lastKnobActivityMs = millis();
   localVolume = constrain(localVolume + delta * VOLUME_STEP_PER_DETENT, 0, 100);
   ui::setVolume(localVolume);
   ui::showControls();
@@ -241,9 +278,15 @@ void setup() {
 
   display::begin();
 
-  ui::Callbacks callbacks = {onPrev, onNext, onPlayPause, onPreset, onRecent};
+  ui::Callbacks callbacks = {onPrev, onNext, onPlayPause, onPreset, onRecent, onSettingTapped};
   ui::begin(callbacks);
-  ui::setControlsTimeout(CONTROLS_TIMEOUT_S);
+
+  settings::begin();
+  const char *settingLabels[settings::kCount];
+  for (int i = 0; i < settings::kCount; i++) settingLabels[i] = settings::label((settings::Item)i);
+  ui::setSettings(settingLabels, settings::kCount);
+  ui::setSelectedSetting(selectedSetting);
+  for (int i = 0; i < settings::kCount; i++) applySetting((settings::Item)i);
 
   static lv_indev_drv_t indevDrv;
   lv_indev_drv_init(&indevDrv);
@@ -285,6 +328,7 @@ void loop() {
   syncRecent();
   serviceBattery();
   power::service();
+  settings::service();
 
   delay(5);
 }
