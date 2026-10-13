@@ -38,7 +38,8 @@ int activeScreen = kNowPlaying;
 
 // Now playing: full-screen art. A tap, a knob turn or waking the screen brings the controls up
 // over it, and they hide again after controlsTimeoutMs without input.
-lv_obj_t *artImg = nullptr;
+lv_obj_t *artImg = nullptr;   // under the controls: the tinted backdrop
+lv_obj_t *frontImg = nullptr; // over them: the plain art, faded in as the controls hide
 const lv_img_dsc_t *plainArt = nullptr;
 const lv_img_dsc_t *tintedArt = nullptr; // backdrop while the controls are up
 lv_obj_t *controlsLayer = nullptr;
@@ -116,22 +117,42 @@ void goToScreen(int index, bool forward) {
 
 void setArtOn(lv_obj_t *img, const lv_img_dsc_t *art, int coverSize);
 
+constexpr uint32_t kControlsFadeMs = 500;
+
 void applyArt() {
-  const lv_img_dsc_t *art = (controlsShown && tintedArt) ? tintedArt : plainArt;
-  setArtOn(artImg, art, 360);
+  setArtOn(artImg, tintedArt ? tintedArt : plainArt, 360);
+  setArtOn(frontImg, plainArt, 360);
+  if (controlsShown) lv_obj_add_flag(frontImg, LV_OBJ_FLAG_HIDDEN);
 }
+
+void frontImgOpaCb(void *img, int32_t v) { lv_obj_set_style_img_opa((lv_obj_t *)img, v, 0); }
+
+void onControlsFadedOut(lv_anim_t *) { lv_obj_add_flag(controlsLayer, LV_OBJ_FLAG_HIDDEN); }
 
 void setControlsShown(bool shown) {
   // With no art there's nothing to look at but the controls, so they stay up.
   if (!shown && !plainArt) return;
   if (shown == controlsShown) return;
   controlsShown = shown;
+  lv_anim_del(frontImg, frontImgOpaCb);
   if (shown) {
+    lv_obj_add_flag(frontImg, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(controlsLayer, LV_OBJ_FLAG_HIDDEN);
-  } else {
-    lv_obj_add_flag(controlsLayer, LV_OBJ_FLAG_HIDDEN);
+    return;
   }
-  applyArt();
+  // Only the image's own opacity animates, which LVGL blends directly; fading the controls
+  // layer itself would need a full-screen intermediate layer render every frame.
+  lv_obj_set_style_img_opa(frontImg, LV_OPA_TRANSP, 0);
+  lv_obj_clear_flag(frontImg, LV_OBJ_FLAG_HIDDEN);
+  lv_anim_t a;
+  lv_anim_init(&a);
+  lv_anim_set_var(&a, frontImg);
+  lv_anim_set_exec_cb(&a, frontImgOpaCb);
+  lv_anim_set_values(&a, LV_OPA_TRANSP, LV_OPA_COVER);
+  lv_anim_set_time(&a, kControlsFadeMs);
+  lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
+  lv_anim_set_ready_cb(&a, onControlsFadedOut);
+  lv_anim_start(&a);
 }
 
 void controlsTimerCb(lv_timer_t *) {
@@ -362,6 +383,10 @@ void begin(const Callbacks &cbs) {
   lv_obj_clear_flag(controlsLayer, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_clear_flag(controlsLayer, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_t *ctrl = controlsLayer;
+
+  frontImg = lv_img_create(np);
+  lv_obj_center(frontImg);
+  lv_obj_add_flag(frontImg, LV_OBJ_FLAG_HIDDEN);
 
   volumeArc = lv_arc_create(ctrl);
   lv_obj_set_size(volumeArc, 356, 356);
