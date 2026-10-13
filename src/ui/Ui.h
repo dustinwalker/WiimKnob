@@ -36,7 +36,7 @@ void setRecent(const RecentTile *tiles, int count);
 void setPresets(const PresetTile *tiles, int count);
 
 void setTrack(const char *title, const char *artist);
-void setAlbumArt(const lv_img_dsc_t *art); // nullptr shows the placeholder
+void setAlbumArt(const lv_img_dsc_t *art, const lv_img_dsc_t *inset); // nullptr shows the placeholder
 void setVolume(int volume0to100); // also updates the plain-number volume badge
 // Big volume readout over the full-screen art (only shown on that page), fading out ~1s after
 // the last call. For knob turns -- not the background volume sync.

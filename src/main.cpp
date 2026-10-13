@@ -196,7 +196,7 @@ void syncUiFromWiimTask() {
     lastSeenMetaVersion = version;
     wiim::TrackMetadata meta = wiim::task::getMetadata();
     ui::setTrack(meta.title.c_str(), meta.artist.c_str());
-    ui::setAlbumArt(wiim::task::getAlbumArt());
+    ui::setAlbumArt(wiim::task::getAlbumArt(), wiim::task::getAlbumArtInset());
   }
 }
 

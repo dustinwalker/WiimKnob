@@ -26,12 +26,16 @@ size_t smallCap = 0; // bytes
 // Shorter side of the final image: the full screen width, so the full-screen art page draws it
 // 1:1. Anything else means LVGL scales it in software on every redraw -- slow enough over a
 // full-screen image that a big volume readout on top of it couldn't keep up with fast knob
-// turns. The small circular inset on the controls page still scales it down, but over far
-// fewer pixels.
+// turns. The small circular inset on the controls page gets its own pre-scaled copy below.
 constexpr int kWorkingSize = 360;
 
 lv_img_dsc_t desc = {};
 String lastUrl;
+
+// Pre-scaled copy for the controls page's circular inset, so LVGL draws it 1:1 instead of
+// zooming the full-size art on every frame (~13ms per full-screen frame during a swipe).
+uint16_t *insetBuf = nullptr;
+lv_img_dsc_t insetDesc = {};
 
 JPEGDEC jpeg;
 
@@ -261,11 +265,25 @@ bool fetch(const String &url) {
   desc.data_size = (size_t)finalW * finalH * 2;
   desc.data = (const uint8_t *)finalBuf;
 
+  if (!insetBuf) {
+    insetBuf = (uint16_t *)heap_caps_malloc((size_t)kInsetSize * kInsetSize * 2, MALLOC_CAP_SPIRAM);
+  }
+  if (insetBuf && makeThumbnail(insetBuf, kInsetSize)) {
+    insetDesc.header.always_zero = 0;
+    insetDesc.header.w = kInsetSize;
+    insetDesc.header.h = kInsetSize;
+    insetDesc.header.cf = LV_IMG_CF_TRUE_COLOR;
+    insetDesc.data_size = (size_t)kInsetSize * kInsetSize * 2;
+    insetDesc.data = (const uint8_t *)insetBuf;
+  }
+
   lastUrl = url;
   return true;
 }
 
 const lv_img_dsc_t *descriptor() { return desc.data ? &desc : nullptr; }
+
+const lv_img_dsc_t *insetDescriptor() { return insetDesc.data ? &insetDesc : descriptor(); }
 
 const String &currentUrl() { return lastUrl; }
 

@@ -16,8 +16,13 @@ namespace albumart {
 // descriptor, if any, is left in place.
 bool fetch(const String &url);
 
+// Side of the square, center-cropped copy made for the controls page's circular art inset.
+constexpr int kInsetSize = 160;
+
 // The most recently decoded image, or nullptr if none has been fetched yet.
 const lv_img_dsc_t *descriptor();
+// Its kInsetSize copy, falling back to descriptor() if that couldn't be allocated.
+const lv_img_dsc_t *insetDescriptor();
 
 // URL of the image descriptor() currently holds (empty if none).
 const String &currentUrl();

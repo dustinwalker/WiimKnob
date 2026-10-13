@@ -328,6 +328,8 @@ TrackMetadata getMetadata() {
 
 const lv_img_dsc_t *getAlbumArt() { return wiim::albumart::descriptor(); }
 
+const lv_img_dsc_t *getAlbumArtInset() { return wiim::albumart::insetDescriptor(); }
+
 uint32_t metadataVersion() {
   xSemaphoreTake(stateMutex, portMAX_DELAY);
   uint32_t v = metaVersionCounter;

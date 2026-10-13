@@ -695,9 +695,9 @@ void setTrack(const char *title, const char *artist) {
   lv_label_set_text(artistLabel, artist ? artist : "");
 }
 
-void setAlbumArt(const lv_img_dsc_t *art) {
+void setAlbumArt(const lv_img_dsc_t *art, const lv_img_dsc_t *inset) {
   setArtOn(artImgAmbient, art, 360);
-  setArtOn(artImgControls, art, kArtInsetSize);
+  setArtOn(artImgControls, inset, kArtInsetSize);
 }
 
 void setVolume(int volume0to100) {
