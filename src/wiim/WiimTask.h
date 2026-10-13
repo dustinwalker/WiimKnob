@@ -28,6 +28,9 @@ void requestRecent(int slot); // recent::Entry::slot -- replays that saved album
 // into a handful of network calls instead of one per detent.
 void requestVolume(int volume0to100);
 
+// How often play state and volume are polled. Defaults to POLL_STATUS_MS from Config.h.
+void setStatusPollMs(uint32_t ms);
+
 // Non-blocking snapshot reads, safe to call every loop() iteration.
 bool isConnected();
 PlayerState getPlayerState();

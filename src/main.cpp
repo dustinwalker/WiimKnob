@@ -231,9 +231,9 @@ void beginStatusServer() {
   statusServer.on("/status", HTTP_GET, []() {
     char body[256];
     snprintf(body, sizeof(body),
-             "{\"voltage\":%.3f,\"percent\":%d,\"charging\":%s,\"uptime_s\":%lu,"
+             "{\"voltage\":%.3f,\"percent\":%d,\"usb_power\":%s,\"uptime_s\":%lu,"
              "\"heap_internal\":%u,\"heap_internal_min\":%u,\"rssi\":%d}\n",
-             lastBattery.voltage, lastBattery.percent, lastBattery.charging ? "true" : "false",
+             lastBattery.voltage, lastBattery.percent, lastBattery.externalPower ? "true" : "false",
              millis() / 1000, (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
              (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL), WiFi.RSSI());
     statusServer.send(200, "application/json", body);
@@ -301,6 +301,19 @@ void serviceKnob() {
   }
 }
 
+// On USB power, trade battery-saving for responsiveness: stay awake, keep the radio out of
+// modem sleep (which adds 100-400ms of latency to every WiiM request), and poll faster.
+bool onExternalPower = false;
+constexpr uint32_t kExternalStatusPollMs = 500;
+
+void applyPowerSource(bool external) {
+  onExternalPower = external;
+  power::setExternalPower(external);
+  WiFi.setSleep(!external);
+  wiim::task::setStatusPollMs(external ? kExternalStatusPollMs : POLL_STATUS_MS);
+  Serial.printf("[power] %s\n", external ? "USB power: staying awake" : "on battery");
+}
+
 void serviceBattery() {
   uint32_t now = millis();
   if (now - lastBatteryPollMs < kBatteryPollMs) {
@@ -309,12 +322,13 @@ void serviceBattery() {
   lastBatteryPollMs = now;
   power::battery::Reading reading = power::battery::read();
   lastBattery = reading;
-  ui::setBattery(reading.percent, reading.charging);
+  ui::setBattery(reading.percent, reading.externalPower);
+  if (reading.externalPower != onExternalPower) applyPowerSource(reading.externalPower);
 
   // Not shown on screen anymore (see the battery screen removal) -- kept here so the raw
   // voltage is still checkable for calibrating BATTERY_DIVIDER_RATIO in Config.h.
   Serial.printf("[battery] %.2fV -> %d%%, ~%.1fh left%s\n", reading.voltage, reading.percent,
-                reading.hoursRemaining, reading.charging ? " (charging)" : "");
+                reading.hoursRemaining, reading.externalPower ? " (USB power)" : "");
 }
 
 } // namespace

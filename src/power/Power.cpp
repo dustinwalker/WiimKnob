@@ -15,6 +15,7 @@ uint32_t lastActivityMs = 0;
 bool screenOn = true;
 uint32_t screenTimeoutMs = (uint32_t)SCREEN_TIMEOUT_S * 1000;
 uint32_t sleepTimeoutMs = (uint32_t)DEEP_SLEEP_TIMEOUT_MIN * 60000UL;
+bool externalPower = false;
 
 void enterDeepSleep(const char *reason) {
   display::setBacklightOn(false);
@@ -61,6 +62,7 @@ void noteActivity() {
 }
 
 void service() {
+  if (externalPower) return;
   uint32_t idleMs = millis() - lastActivityMs;
 
   if (screenOn && idleMs > screenTimeoutMs) {
@@ -78,5 +80,10 @@ bool isScreenOn() { return screenOn; }
 void setScreenTimeout(uint32_t seconds) { screenTimeoutMs = seconds * 1000; }
 
 void setSleepTimeout(uint32_t minutes) { sleepTimeoutMs = minutes * 60000UL; }
+
+void setExternalPower(bool on) {
+  externalPower = on;
+  noteActivity(); // wakes the screen on plug-in; restarts the timeouts on unplug
+}
 
 } // namespace power

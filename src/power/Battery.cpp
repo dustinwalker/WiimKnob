@@ -41,9 +41,7 @@ int voltageToPercent(float voltage) {
 }
 
 // Measured on real hardware: raw readings jitter by as much as 90mV between samples (8x
-// averaged ADC or not), so a naive per-sample delta is nearly useless -- it's noise, not
-// trend. Smoothing the voltage with an EMA before looking for a trend, and still requiring
-// two consecutive qualifying rises on the *smoothed* value, is what makes this usable.
+// averaged ADC or not), so the percentage comes from an EMA-smoothed voltage.
 constexpr float kEmaAlpha = 0.25f;
 float filteredVoltage = -1;
 
@@ -56,26 +54,13 @@ float smooth(float rawVoltage) {
   return filteredVoltage;
 }
 
-// Per-sample rise (samples are ~kBatteryPollMs apart, set by the caller) on the smoothed
-// voltage. Two consecutive qualifying rises are required before calling it "charging", so a
-// real trend takes ~2 poll intervals to be detected but a single noisy sample can't trigger a
-// false positive on its own.
-constexpr float kChargeRiseThreshold = 0.010f;
-
-float prevVoltage1 = -1; // one reading ago
-float prevVoltage2 = -1; // two readings ago
-
-bool detectCharging(float voltage) {
-  bool charging = false;
-  if (prevVoltage1 > 0 && prevVoltage2 > 0) {
-    bool risingNow = voltage > prevVoltage1 + kChargeRiseThreshold;
-    bool risingBefore = prevVoltage1 > prevVoltage2 + kChargeRiseThreshold;
-    charging = risingNow && risingBefore;
-  }
-  prevVoltage2 = prevVoltage1;
-  prevVoltage1 = voltage;
-  return charging;
-}
+// GPIO1's divider reads 4.66-4.84V on USB power and 3.9-4.2V on battery (measured), so it sits
+// on the board's supply rail rather than the cell: anything above a full cell means USB power.
+// Hysteresis keeps ADC jitter (~90mV) from flapping between the two.
+constexpr float kExternalOnVolts = 4.45f;
+constexpr float kExternalOffVolts = 4.35f;
+bool externalPower = false;
+int lastBatteryPercent = -1;
 
 } // namespace
 
@@ -93,11 +78,22 @@ Reading read() {
   float sensedVolts = (sumMilliVolts / (float)kSamples) / 1000.0f;
   float rawVoltage = sensedVolts * BATTERY_DIVIDER_RATIO;
 
+  bool wasExternal = externalPower;
+  externalPower = rawVoltage > (externalPower ? kExternalOffVolts : kExternalOnVolts);
+
   Reading r;
-  r.voltage = smooth(rawVoltage);
-  r.percent = voltageToPercent(r.voltage);
+  r.externalPower = externalPower;
+  if (externalPower) {
+    // The rail voltage says nothing about the cell, so hold the last battery-side estimate.
+    r.voltage = rawVoltage;
+    r.percent = lastBatteryPercent >= 0 ? lastBatteryPercent : 100;
+  } else {
+    if (wasExternal) filteredVoltage = -1; // reseed rather than drift down from the rail voltage
+    r.voltage = smooth(rawVoltage);
+    r.percent = voltageToPercent(r.voltage);
+    lastBatteryPercent = r.percent;
+  }
   r.hoursRemaining = (r.percent / 100.0f) * BATTERY_FULL_RUNTIME_HOURS;
-  r.charging = detectCharging(r.voltage);
   return r;
 }
 

@@ -65,6 +65,7 @@ int pendingVolume = -1;
 // next/prev), so the background task re-reads metadata right away instead of on its timer.
 volatile bool metaRefreshRequested = false;
 
+volatile uint32_t statusPollMs = POLL_STATUS_MS;
 String lastAlbumArtUrl;
 
 // Some sources (seen with Qobuz Connect) report status "none" whether playing or paused. Infer
@@ -222,7 +223,7 @@ void cmdTaskFn(void *) {
       lastVolumeSendMs = now;
     }
 
-    if (forceStatus || now - lastStatusMs >= POLL_STATUS_MS) {
+    if (forceStatus || now - lastStatusMs >= statusPollMs) {
       refreshStatus();
       lastStatusMs = now;
       forceStatus = false;
@@ -325,6 +326,8 @@ TrackMetadata getMetadata() {
   xSemaphoreGive(stateMutex);
   return copy;
 }
+
+void setStatusPollMs(uint32_t ms) { statusPollMs = ms; }
 
 const lv_img_dsc_t *getAlbumArt() { return wiim::albumart::descriptor(); }
 
