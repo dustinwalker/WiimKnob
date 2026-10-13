@@ -36,13 +36,16 @@ void setRecent(const RecentTile *tiles, int count);
 void setPresets(const PresetTile *tiles, int count);
 
 void setTrack(const char *title, const char *artist);
-void setAlbumArt(const lv_img_dsc_t *art, const lv_img_dsc_t *inset); // nullptr shows the placeholder
-void setVolume(int volume0to100); // also updates the plain-number volume badge
-// Big volume readout over the full-screen art (only shown on that page), fading out ~1s after
-// the last call. For knob turns -- not the background volume sync.
-void flashVolume(int volume0to100);
+// art nullptr shows a black backdrop with the controls always up; tinted is the backdrop used
+// while the controls are showing (falls back to art).
+void setAlbumArt(const lv_img_dsc_t *art, const lv_img_dsc_t *tinted);
+void setVolume(int volume0to100);
+// Brings the controls up over the art and restarts their hide timer. For knob turns and wakes,
+// which LVGL doesn't see as input.
+void showControls();
+void setControlsTimeout(uint32_t seconds);
 void setPlaying(bool playing);
-void setConnected(bool connected); // small dot at the top of the controls screen
+void setConnected(bool connected); // small dot at the top of the controls
 
 // Battery-shaped icon with a proportional, color-coded fill; tap toggles it to a plain
 // percentage (tap again to go back). charging pulses it -- see the caveat on

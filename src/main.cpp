@@ -3,6 +3,9 @@
 #include <lvgl.h>
 
 #include "Config.h"
+#ifndef CONTROLS_TIMEOUT_S
+#define CONTROLS_TIMEOUT_S 8 // for a Config.h made before this setting existed
+#endif
 #include "display/DisplayDriver.h"
 #include "haptics/Haptics.h"
 #include "input/Knob.h"
@@ -196,7 +199,7 @@ void syncUiFromWiimTask() {
     lastSeenMetaVersion = version;
     wiim::TrackMetadata meta = wiim::task::getMetadata();
     ui::setTrack(meta.title.c_str(), meta.artist.c_str());
-    ui::setAlbumArt(wiim::task::getAlbumArt(), wiim::task::getAlbumArtInset());
+    ui::setAlbumArt(wiim::task::getAlbumArt(), wiim::task::getAlbumArtTinted());
   }
 }
 
@@ -209,7 +212,7 @@ void serviceKnob() {
   power::noteActivity();
   localVolume = constrain(localVolume + delta * VOLUME_STEP_PER_DETENT, 0, 100);
   ui::setVolume(localVolume);
-  ui::flashVolume(localVolume);
+  ui::showControls();
   wiim::task::requestVolume(localVolume);
   if (power::isScreenOn()) {
     display::refreshNow(); // show this detent now, not on the next refresh tick
@@ -240,6 +243,7 @@ void setup() {
 
   ui::Callbacks callbacks = {onPrev, onNext, onPlayPause, onPreset, onRecent};
   ui::begin(callbacks);
+  ui::setControlsTimeout(CONTROLS_TIMEOUT_S);
 
   static lv_indev_drv_t indevDrv;
   lv_indev_drv_init(&indevDrv);
@@ -259,6 +263,12 @@ void setup() {
 }
 
 void loop() {
+  static bool screenWasOn = true;
+  bool screenOn = power::isScreenOn();
+  if (screenOn && !screenWasOn) {
+    ui::showControls();
+  }
+  screenWasOn = screenOn;
   if (power::isScreenOn()) {
     display::tick(); // pumps LVGL, which reads touch via the indev callback above
     screenOffTouchDown = true; // a finger still down as the screen times out isn't a new tap

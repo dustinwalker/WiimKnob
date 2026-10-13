@@ -26,10 +26,14 @@
 
 // --- Power management ---
 
+// Hide the controls over the album art after this many seconds without a touch or knob turn,
+// leaving just the art until the screen times out.
+#define CONTROLS_TIMEOUT_S 8
+
 // Turn the backlight off after this many seconds without a touch or knob turn. The knob still
 // changes volume while the screen is off (and turning it, or touching the screen, turns the
 // backlight back on) -- this only saves the backlight's own power draw, not WiFi/CPU.
-#define SCREEN_TIMEOUT_S 30
+#define SCREEN_TIMEOUT_S 70
 
 // Go into deep sleep after this many minutes without a touch or knob turn, for the much larger
 // savings of shutting down WiFi and the CPU. Wake it back up by turning the knob or touching

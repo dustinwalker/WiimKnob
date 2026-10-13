@@ -27,33 +27,24 @@ constexpr uint32_t kButtonColor = 0x2a2a2a;
 constexpr uint32_t kBadgeColor = 0x333333;
 constexpr uint32_t kBatteryGreen = 0x639922;
 
-// Swipe order, left to right. Boots on the controls screen.
-constexpr int kControls = 0;
-constexpr int kNowPlaying = 1;
-constexpr int kRecent = 2;
-constexpr int kPresets = 3;
-constexpr int kScreenCount = 4;
+// Swipe order, left to right. Boots on now playing.
+constexpr int kNowPlaying = 0;
+constexpr int kRecent = 1;
+constexpr int kPresets = 2;
+constexpr int kScreenCount = 3;
 
 lv_obj_t *screens[kScreenCount];
-int activeScreen = kControls;
+int activeScreen = kNowPlaying;
 
-// Now playing (ambient) -- just the art, nothing else. Double-tap toggles play/pause.
-lv_obj_t *artImgAmbient = nullptr;
-lv_obj_t *ambientFlash = nullptr;      // big play/pause icon shown briefly on a double-tap
-lv_obj_t *ambientFlashIcon = nullptr;
-uint32_t lastAmbientTapMs = 0;
-lv_obj_t *ambientVolume = nullptr;      // big volume readout shown while turning the knob
-lv_obj_t *ambientVolumeArc = nullptr;
-lv_obj_t *ambientVolumeLabel = nullptr;
-uint32_t ambientVolumeLastMs = 0;    // last knob detent shown in the readout
-bool ambientVolumeFading = false;
-constexpr uint32_t kVolumeReadoutHoldMs = 1000;
-constexpr uint32_t kVolumeReadoutFadeMs = 400;
-constexpr uint32_t kDoubleTapWindowMs = 400;
-bool isPlaying = false;
+// Now playing: full-screen art. A tap, a knob turn or waking the screen brings the controls up
+// over it, and they hide again after controlsTimeoutMs without input.
+lv_obj_t *artImg = nullptr;
+const lv_img_dsc_t *plainArt = nullptr;
+const lv_img_dsc_t *tintedArt = nullptr; // backdrop while the controls are up
+lv_obj_t *controlsLayer = nullptr;
+bool controlsShown = true;
+uint32_t controlsTimeoutMs = 8000;
 
-// Controls.
-lv_obj_t *artImgControls = nullptr; // lives inside a circular-clipped container, see begin()
 lv_obj_t *volumeArc = nullptr;
 lv_obj_t *volumeLabel = nullptr;
 lv_obj_t *titleLabel = nullptr;
@@ -82,7 +73,6 @@ lv_obj_t *lastFiredTile = nullptr; // red border: last preset fired from here, n
                                    // the WiiM doesn't report which preset is currently in effect
 int lastFiredKey = 0;               // survives a grid rebuild
 
-constexpr int kArtInsetSize = 160;
 constexpr int kBattIconW = 32, kBattIconH = 18;
 constexpr int kBattFillMaxW = kBattIconW - 6; // inset from the outline's border
 
@@ -124,39 +114,39 @@ void goToScreen(int index, bool forward) {
   activeScreen = index;
 }
 
-void volumeReadoutTimerCb(lv_timer_t *) {
-  if (lv_obj_has_flag(ambientVolume, LV_OBJ_FLAG_HIDDEN)) return;
-  uint32_t idle = lv_tick_elaps(ambientVolumeLastMs);
-  if (!ambientVolumeFading && idle > kVolumeReadoutHoldMs) {
-    lv_obj_fade_out(ambientVolume, kVolumeReadoutFadeMs, 0);
-    ambientVolumeFading = true;
-  } else if (ambientVolumeFading && idle > kVolumeReadoutHoldMs + kVolumeReadoutFadeMs + 50) {
-    lv_obj_add_flag(ambientVolume, LV_OBJ_FLAG_HIDDEN);
-    ambientVolumeFading = false;
+void setArtOn(lv_obj_t *img, const lv_img_dsc_t *art, int coverSize);
+
+void applyArt() {
+  const lv_img_dsc_t *art = (controlsShown && tintedArt) ? tintedArt : plainArt;
+  setArtOn(artImg, art, 360);
+}
+
+void setControlsShown(bool shown) {
+  // With no art there's nothing to look at but the controls, so they stay up.
+  if (!shown && !plainArt) return;
+  if (shown == controlsShown) return;
+  controlsShown = shown;
+  if (shown) {
+    lv_obj_clear_flag(controlsLayer, LV_OBJ_FLAG_HIDDEN);
+  } else {
+    lv_obj_add_flag(controlsLayer, LV_OBJ_FLAG_HIDDEN);
+  }
+  applyArt();
+}
+
+void controlsTimerCb(lv_timer_t *) {
+  if (controlsShown && lv_disp_get_inactive_time(NULL) > controlsTimeoutMs) {
+    setControlsShown(false);
   }
 }
 
-void onAmbientTapped(lv_event_t *e) {
+void onArtTapped(lv_event_t *e) {
   (void)e;
   lv_indev_t *indev = lv_indev_get_act();
   if (indev && lv_indev_get_gesture_dir(indev) != LV_DIR_NONE) {
     return; // end of a swipe to another screen, not a tap
   }
-  uint32_t now = lv_tick_get();
-  if (lastAmbientTapMs == 0 || now - lastAmbientTapMs > kDoubleTapWindowMs) {
-    lastAmbientTapMs = now;
-    return;
-  }
-  lastAmbientTapMs = 0;
-
-  // Show what the tap is about to do (the real state catches up a poll later).
-  lv_label_set_text(ambientFlashIcon, isPlaying ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY);
-  lv_anim_del(ambientFlash, NULL);
-  lv_obj_set_style_opa(ambientFlash, LV_OPA_COVER, 0);
-  lv_obj_clear_flag(ambientFlash, LV_OBJ_FLAG_HIDDEN);
-  lv_obj_fade_out(ambientFlash, 300, 500);
-
-  if (callbacks.onPlayPause) callbacks.onPlayPause();
+  setControlsShown(!controlsShown);
 }
 
 void onGesture(lv_event_t *e) {
@@ -356,91 +346,47 @@ void begin(const Callbacks &cbs) {
   }
 
   // ---- Now playing ----
-  artImgAmbient = lv_img_create(screens[kNowPlaying]);
-  lv_obj_center(artImgAmbient);
-  lv_obj_add_flag(artImgAmbient, LV_OBJ_FLAG_HIDDEN);
-  makePageDots(screens[kNowPlaying], kNowPlaying);
-  // The art isn't clickable, so taps anywhere land on the screen itself. SHORT_CLICKED, not
-  // CLICKED, so a long press doesn't count as half of a double-tap.
-  lv_obj_add_event_cb(screens[kNowPlaying], onAmbientTapped, LV_EVENT_SHORT_CLICKED, NULL);
+  lv_obj_t *np = screens[kNowPlaying];
+  artImg = lv_img_create(np);
+  lv_obj_center(artImg);
+  lv_obj_add_flag(artImg, LV_OBJ_FLAG_HIDDEN);
+  // The art isn't clickable, so taps anywhere land on the screen itself.
+  lv_obj_add_event_cb(np, onArtTapped, LV_EVENT_SHORT_CLICKED, NULL);
 
-  ambientFlash = lv_obj_create(screens[kNowPlaying]);
-  lv_obj_set_size(ambientFlash, 88, 88);
-  lv_obj_set_style_radius(ambientFlash, LV_RADIUS_CIRCLE, 0);
-  lv_obj_set_style_bg_color(ambientFlash, lv_color_black(), 0);
-  lv_obj_set_style_bg_opa(ambientFlash, LV_OPA_60, 0);
-  lv_obj_set_style_border_width(ambientFlash, 0, 0);
-  lv_obj_center(ambientFlash);
-  lv_obj_clear_flag(ambientFlash, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_clear_flag(ambientFlash, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_add_flag(ambientFlash, LV_OBJ_FLAG_HIDDEN);
-  // Volume readout, created before the double-tap icon so that one draws on top if both show.
-  ambientVolume = lv_obj_create(screens[kNowPlaying]);
-  lv_obj_set_size(ambientVolume, 210, 210);
-  lv_obj_set_style_radius(ambientVolume, LV_RADIUS_CIRCLE, 0);
-  // Opaque rather than see-through: blending a translucent circle over the art cost ~5ms of
-  // each ~20ms redraw (measured), the difference between ~36 and ~50 fps on a fast spin.
-  lv_obj_set_style_bg_color(ambientVolume, lv_color_hex(0x111111), 0);
-  lv_obj_set_style_bg_opa(ambientVolume, LV_OPA_COVER, 0);
-  lv_obj_set_style_border_width(ambientVolume, 0, 0);
-  lv_obj_set_style_pad_all(ambientVolume, 0, 0);
-  lv_obj_center(ambientVolume);
-  lv_obj_clear_flag(ambientVolume, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_clear_flag(ambientVolume, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_add_flag(ambientVolume, LV_OBJ_FLAG_HIDDEN);
+  controlsLayer = lv_obj_create(np);
+  lv_obj_set_size(controlsLayer, 360, 360);
+  lv_obj_center(controlsLayer);
+  lv_obj_set_style_bg_opa(controlsLayer, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(controlsLayer, 0, 0);
+  lv_obj_set_style_pad_all(controlsLayer, 0, 0);
+  lv_obj_clear_flag(controlsLayer, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_clear_flag(controlsLayer, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_t *ctrl = controlsLayer;
 
-  ambientVolumeArc = lv_arc_create(ambientVolume);
-  lv_obj_set_size(ambientVolumeArc, 196, 196);
-  lv_obj_center(ambientVolumeArc);
-  lv_arc_set_bg_angles(ambientVolumeArc, 0, 360);
-  lv_arc_set_rotation(ambientVolumeArc, 270);
-  lv_arc_set_range(ambientVolumeArc, 0, 100);
-  lv_obj_remove_style(ambientVolumeArc, NULL, LV_PART_KNOB);
-  lv_obj_clear_flag(ambientVolumeArc, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_set_style_arc_width(ambientVolumeArc, 6, LV_PART_MAIN);
-  lv_obj_set_style_arc_width(ambientVolumeArc, 6, LV_PART_INDICATOR);
-  lv_obj_set_style_arc_color(ambientVolumeArc, lv_color_hex(0x3a3a3a), LV_PART_MAIN);
-  lv_obj_set_style_arc_color(ambientVolumeArc, lv_color_hex(kAccentColor), LV_PART_INDICATOR);
+  volumeArc = lv_arc_create(ctrl);
+  lv_obj_set_size(volumeArc, 356, 356);
+  lv_obj_center(volumeArc);
+  lv_arc_set_bg_angles(volumeArc, 0, 360);
+  lv_arc_set_rotation(volumeArc, 270);
+  lv_arc_set_range(volumeArc, 0, 100);
+  lv_arc_set_value(volumeArc, 0);
+  lv_obj_remove_style(volumeArc, NULL, LV_PART_KNOB);
+  lv_obj_clear_flag(volumeArc, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_set_style_arc_width(volumeArc, 10, LV_PART_MAIN);
+  lv_obj_set_style_arc_width(volumeArc, 10, LV_PART_INDICATOR);
+  lv_obj_set_style_arc_color(volumeArc, lv_color_hex(0x2a2a2a), LV_PART_MAIN);
+  lv_obj_set_style_arc_opa(volumeArc, LV_OPA_60, LV_PART_MAIN);
+  lv_obj_set_style_arc_color(volumeArc, lv_color_hex(kAccentColor), LV_PART_INDICATOR);
+  lv_obj_set_style_bg_opa(volumeArc, LV_OPA_TRANSP, 0);
 
-  ambientVolumeLabel = lv_label_create(ambientVolume);
-  lv_obj_set_style_text_font(ambientVolumeLabel, &lv_font_montserrat_96_digits, 0);
-  lv_obj_set_style_text_color(ambientVolumeLabel, lv_color_white(), 0);
-  lv_obj_center(ambientVolumeLabel);
-  lv_obj_move_foreground(ambientFlash);
-  // Fades the readout out once the knob has been still for a moment (see flashVolume()).
-  lv_timer_create(volumeReadoutTimerCb, 100, NULL);
-
-  ambientFlashIcon = lv_label_create(ambientFlash);
-  lv_obj_set_style_text_font(ambientFlashIcon, &lv_font_montserrat_24, 0);
-  lv_obj_set_style_text_color(ambientFlashIcon, lv_color_white(), 0);
-  lv_obj_center(ambientFlashIcon);
-
-  // ---- Controls ----
-  lv_obj_t *ctrl = screens[kControls];
-
-  lv_obj_t *artInset = lv_obj_create(ctrl);
-  lv_obj_set_size(artInset, kArtInsetSize, kArtInsetSize);
-  lv_obj_set_style_radius(artInset, LV_RADIUS_CIRCLE, 0);
-  lv_obj_set_style_clip_corner(artInset, true, 0);
-  lv_obj_set_style_bg_color(artInset, lv_color_hex(0x1c1c1c), 0);
-  lv_obj_set_style_border_width(artInset, 0, 0);
-  lv_obj_align(artInset, LV_ALIGN_CENTER, 0, -58);
-  lv_obj_clear_flag(artInset, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_clear_flag(artInset, LV_OBJ_FLAG_CLICKABLE);
-
-  artImgControls = lv_img_create(artInset);
-  lv_obj_center(artImgControls);
-  lv_obj_add_flag(artImgControls, LV_OBJ_FLAG_HIDDEN);
-
-  // Volume level and battery gauge flank the art at the same height as its center.
-  lv_obj_t *volumeBadge = makeBadge(ctrl, 56, -130, -30);
-  volumeLabel = lv_label_create(volumeBadge);
-  lv_obj_set_style_text_font(volumeLabel, &lv_font_montserrat_20, 0);
+  volumeLabel = lv_label_create(ctrl);
+  lv_obj_set_style_text_font(volumeLabel, &lv_font_montserrat_96_digits, 0);
   lv_obj_set_style_text_color(volumeLabel, lv_color_white(), 0);
-  lv_obj_center(volumeLabel);
-  lv_label_set_text(volumeLabel, "--");
+  lv_obj_align(volumeLabel, LV_ALIGN_CENTER, 0, -45);
+  lv_label_set_text(volumeLabel, "");
 
-  batteryBadge = makeBadge(ctrl, 56, 130, -30);
+  batteryBadge = makeBadge(ctrl, 44, 0, -122);
+  lv_obj_set_style_bg_opa(batteryBadge, LV_OPA_TRANSP, 0);
   lv_obj_add_flag(batteryBadge, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_flag(batteryBadge, LV_OBJ_FLAG_GESTURE_BUBBLE);
   lv_obj_add_event_cb(batteryBadge, onBatteryBadgeClicked, LV_EVENT_CLICKED, NULL);
@@ -487,40 +433,15 @@ void begin(const Callbacks &cbs) {
   lv_label_set_text(batteryPercentLabel, "--%");
   lv_obj_add_flag(batteryPercentLabel, LV_OBJ_FLAG_HIDDEN); // shown only after a tap
 
-  // Small connectivity dot above the art: green once the last WiiM poll succeeded, red if not.
-  lv_obj_t *dotBacking = lv_obj_create(ctrl);
-  lv_obj_set_size(dotBacking, 20, 20);
-  lv_obj_set_style_radius(dotBacking, LV_RADIUS_CIRCLE, 0);
-  lv_obj_set_style_border_width(dotBacking, 0, 0);
-  lv_obj_set_style_bg_color(dotBacking, lv_color_black(), 0);
-  lv_obj_set_style_bg_opa(dotBacking, LV_OPA_50, 0);
-  lv_obj_align(dotBacking, LV_ALIGN_CENTER, 0, -150);
-  lv_obj_clear_flag(dotBacking, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_clear_flag(dotBacking, LV_OBJ_FLAG_CLICKABLE);
-
+  // Small connectivity dot at the top: green once the last WiiM poll succeeded, red if not.
   statusDot = lv_obj_create(ctrl);
-  lv_obj_set_size(statusDot, 10, 10);
+  lv_obj_set_size(statusDot, 8, 8);
   lv_obj_set_style_radius(statusDot, LV_RADIUS_CIRCLE, 0);
   lv_obj_set_style_border_width(statusDot, 0, 0);
   lv_obj_set_style_bg_color(statusDot, lv_palette_main(LV_PALETTE_RED), 0);
-  lv_obj_align(statusDot, LV_ALIGN_CENTER, 0, -150);
+  lv_obj_align(statusDot, LV_ALIGN_CENTER, 0, -153);
   lv_obj_clear_flag(statusDot, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_clear_flag(statusDot, LV_OBJ_FLAG_CLICKABLE);
-
-  volumeArc = lv_arc_create(ctrl);
-  lv_obj_set_size(volumeArc, 356, 356);
-  lv_obj_center(volumeArc);
-  lv_arc_set_bg_angles(volumeArc, 0, 360);
-  lv_arc_set_rotation(volumeArc, 270);
-  lv_arc_set_range(volumeArc, 0, 100);
-  lv_arc_set_value(volumeArc, 0);
-  lv_obj_remove_style(volumeArc, NULL, LV_PART_KNOB);
-  lv_obj_clear_flag(volumeArc, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_set_style_arc_width(volumeArc, 10, LV_PART_MAIN);
-  lv_obj_set_style_arc_width(volumeArc, 10, LV_PART_INDICATOR);
-  lv_obj_set_style_arc_color(volumeArc, lv_color_hex(0x2a2a2a), LV_PART_MAIN);
-  lv_obj_set_style_arc_color(volumeArc, lv_color_hex(kAccentColor), LV_PART_INDICATOR);
-  lv_obj_set_style_bg_opa(volumeArc, LV_OPA_TRANSP, 0);
 
   titleLabel = lv_label_create(ctrl);
   lv_obj_set_width(titleLabel, 260);
@@ -536,7 +457,7 @@ void begin(const Callbacks &cbs) {
   lv_label_set_long_mode(artistLabel, LV_LABEL_LONG_SCROLL_CIRCULAR);
   lv_obj_set_style_text_align(artistLabel, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_set_style_text_font(artistLabel, &lv_font_montserrat_16_latin, 0);
-  lv_obj_set_style_text_color(artistLabel, lv_color_hex(0xa0a0a0), 0);
+  lv_obj_set_style_text_color(artistLabel, lv_color_hex(0xc8c8c8), 0);
   lv_obj_align(artistLabel, LV_ALIGN_CENTER, 0, 53);
   lv_label_set_text(artistLabel, "");
 
@@ -555,7 +476,8 @@ void begin(const Callbacks &cbs) {
   makeBarIcon(controlBar, 0, LV_SYMBOL_PLAY, onPlayPauseClicked, &playPauseIcon);
   makeBarIcon(controlBar, 66, LV_SYMBOL_NEXT, onNextClicked);
 
-  makePageDots(ctrl, kControls);
+  makePageDots(ctrl, kNowPlaying);
+  lv_timer_create(controlsTimerCb, 250, NULL);
 
   // ---- Recently played ----
   lv_obj_t *rec = screens[kRecent];
@@ -618,7 +540,7 @@ void begin(const Callbacks &cbs) {
 
   makePageDots(pres, kPresets);
 
-  lv_scr_load(screens[kControls]);
+  lv_scr_load(screens[kNowPlaying]);
 }
 
 void setRecent(const RecentTile *tiles, int count) {
@@ -695,9 +617,11 @@ void setTrack(const char *title, const char *artist) {
   lv_label_set_text(artistLabel, artist ? artist : "");
 }
 
-void setAlbumArt(const lv_img_dsc_t *art, const lv_img_dsc_t *inset) {
-  setArtOn(artImgAmbient, art, 360);
-  setArtOn(artImgControls, inset, kArtInsetSize);
+void setAlbumArt(const lv_img_dsc_t *art, const lv_img_dsc_t *tinted) {
+  plainArt = art;
+  tintedArt = tinted;
+  if (!art) setControlsShown(true);
+  applyArt();
 }
 
 void setVolume(int volume0to100) {
@@ -708,30 +632,17 @@ void setVolume(int volume0to100) {
   lv_label_set_text_fmt(volumeLabel, "%d", volume0to100);
 }
 
-void flashVolume(int volume0to100) {
-  if (activeScreen != kNowPlaying) {
-    return; // the controls page already shows volume; the others don't need it
-  }
-  ambientVolumeLastMs = lv_tick_get();
-  // Only the digits and the changed slice of the ring get redrawn per detent. Touching the
-  // readout's own opacity (as restarting a fade on every detent did) marks the whole 210px
-  // circle dirty instead -- measured at twice the redraw cost, which is what made fast knob
-  // turns lag. So the opacity is only reset when the readout is actually hidden or fading.
-  lv_arc_set_value(ambientVolumeArc, volume0to100);
-  lv_label_set_text_fmt(ambientVolumeLabel, "%d", volume0to100);
-  if (lv_obj_has_flag(ambientVolume, LV_OBJ_FLAG_HIDDEN) || ambientVolumeFading) {
-    lv_anim_del(ambientVolume, NULL);
-    lv_obj_set_style_opa(ambientVolume, LV_OPA_COVER, 0);
-    lv_obj_clear_flag(ambientVolume, LV_OBJ_FLAG_HIDDEN);
-    ambientVolumeFading = false;
-  }
+void setControlsTimeout(uint32_t seconds) { controlsTimeoutMs = seconds * 1000; }
+
+void showControls() {
+  lv_disp_trig_activity(NULL); // restarts the hide timer; knob turns and wakes aren't LVGL input
+  setControlsShown(true);
 }
 
 // These get called every loop() pass with whatever the WiiM last reported. Re-applying an
 // unchanged value still costs LVGL a text relayout or style refresh, so skip those.
 void setPlaying(bool playing) {
   static int last = -1;
-  isPlaying = playing;
   if (last == (int)playing) return;
   last = playing;
   lv_label_set_text(playPauseIcon, playing ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY);

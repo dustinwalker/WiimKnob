@@ -26,16 +26,17 @@ size_t smallCap = 0; // bytes
 // Shorter side of the final image: the full screen width, so the full-screen art page draws it
 // 1:1. Anything else means LVGL scales it in software on every redraw -- slow enough over a
 // full-screen image that a big volume readout on top of it couldn't keep up with fast knob
-// turns. The small circular inset on the controls page gets its own pre-scaled copy below.
+// turns.
 constexpr int kWorkingSize = 360;
 
 lv_img_dsc_t desc = {};
 String lastUrl;
 
-// Pre-scaled copy for the controls page's circular inset, so LVGL draws it 1:1 instead of
-// zooming the full-size art on every frame (~13ms per full-screen frame during a swipe).
-uint16_t *insetBuf = nullptr;
-lv_img_dsc_t insetDesc = {};
+// Backdrop shown behind the on-screen controls: the art center-cropped to the screen with a
+// dark gradient in its own dominant color baked in. Built once per track, so showing the
+// controls costs a plain 1:1 image draw instead of blending a translucent layer every frame.
+uint16_t *tintedBuf = nullptr;
+lv_img_dsc_t tintedDesc = {};
 
 JPEGDEC jpeg;
 
@@ -138,6 +139,74 @@ void boxDownscale(const uint16_t *src, int srcStride, int srcW, int srcH, uint16
 }
 
 } // namespace
+
+// Saturated pixels count for more, so a colorful cover on a gray background picks the color.
+void dominantColor(const uint16_t *src, int stride, int side, uint8_t &r, uint8_t &g, uint8_t &b) {
+  uint32_t rs = 0, gs = 0, bs = 0, ws = 0;
+  for (int y = 0; y < side; y += 6) {
+    for (int x = 0; x < side; x += 6) {
+      uint16_t px = __builtin_bswap16(src[y * stride + x]);
+      uint32_t pr = (px >> 8) & 0xF8, pg = (px >> 3) & 0xFC, pb = (px << 3) & 0xF8;
+      uint32_t mx = max(pr, max(pg, pb)), mn = min(pr, min(pg, pb));
+      uint32_t w = (mx - mn) + 16;
+      rs += pr * w;
+      gs += pg * w;
+      bs += pb * w;
+      ws += w;
+    }
+  }
+  r = rs / ws;
+  g = gs / ws;
+  b = bs / ws;
+}
+
+void makeTinted() {
+  int w = desc.header.w, h = desc.header.h;
+  int side = min(w, h);
+  if (side < kWorkingSize) {
+    tintedDesc.data = nullptr;
+    return;
+  }
+  if (!tintedBuf) {
+    tintedBuf = (uint16_t *)heap_caps_malloc((size_t)kWorkingSize * kWorkingSize * 2, MALLOC_CAP_SPIRAM);
+    if (!tintedBuf) return;
+  }
+  const uint16_t *src = (const uint16_t *)desc.data;
+  const uint16_t *crop = &src[((h - kWorkingSize) / 2) * w + (w - kWorkingSize) / 2];
+
+  uint8_t dr, dg, db;
+  dominantColor(crop, w, kWorkingSize, dr, dg, db);
+  // Darken so the brightest channel lands around 70/255: still reads as the art's color, dark
+  // enough for white text.
+  uint32_t mx = max(dr, max(dg, db));
+  if (mx == 0) mx = 1;
+  uint32_t tr = dr * 70 / mx, tg = dg * 70 / mx, tb = db * 70 / mx;
+
+  for (int y = 0; y < kWorkingSize; y++) {
+    // Tint strength 0-256: ~150 a little above center (behind the volume number), rising
+    // toward the top and bottom edges.
+    int d = abs(y - kWorkingSize * 42 / 100);
+    uint32_t a = 150 + 100 * d / (kWorkingSize * 58 / 100);
+    uint32_t ta = 256 - a;
+    uint32_t mr = tr * a, mg = tg * a, mb = tb * a;
+    const uint16_t *row = &crop[y * w];
+    uint16_t *out = &tintedBuf[y * kWorkingSize];
+    for (int x = 0; x < kWorkingSize; x++) {
+      uint16_t px = __builtin_bswap16(row[x]);
+      uint32_t r = (((px >> 8) & 0xF8) * ta + mr) >> 8;
+      uint32_t g = (((px >> 3) & 0xFC) * ta + mg) >> 8;
+      uint32_t b = (((px << 3) & 0xF8) * ta + mb) >> 8;
+      out[x] = __builtin_bswap16((uint16_t)(((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)));
+    }
+  }
+
+  tintedDesc.header.always_zero = 0;
+  tintedDesc.header.w = kWorkingSize;
+  tintedDesc.header.h = kWorkingSize;
+  tintedDesc.header.cf = LV_IMG_CF_TRUE_COLOR;
+  tintedDesc.data_size = (size_t)kWorkingSize * kWorkingSize * 2;
+  tintedDesc.data = (const uint8_t *)tintedBuf;
+}
 
 bool fetch(const String &url) {
   if (url.length() == 0) {
@@ -266,17 +335,7 @@ bool fetch(const String &url) {
   desc.data_size = (size_t)finalW * finalH * 2;
   desc.data = (const uint8_t *)finalBuf;
 
-  if (!insetBuf) {
-    insetBuf = (uint16_t *)heap_caps_malloc((size_t)kInsetSize * kInsetSize * 2, MALLOC_CAP_SPIRAM);
-  }
-  if (insetBuf && makeThumbnail(insetBuf, kInsetSize)) {
-    insetDesc.header.always_zero = 0;
-    insetDesc.header.w = kInsetSize;
-    insetDesc.header.h = kInsetSize;
-    insetDesc.header.cf = LV_IMG_CF_TRUE_COLOR;
-    insetDesc.data_size = (size_t)kInsetSize * kInsetSize * 2;
-    insetDesc.data = (const uint8_t *)insetBuf;
-  }
+  makeTinted();
 
   lastUrl = url;
   return true;
@@ -284,7 +343,7 @@ bool fetch(const String &url) {
 
 const lv_img_dsc_t *descriptor() { return desc.data ? &desc : nullptr; }
 
-const lv_img_dsc_t *insetDescriptor() { return insetDesc.data ? &insetDesc : descriptor(); }
+const lv_img_dsc_t *tintedDescriptor() { return tintedDesc.data ? &tintedDesc : nullptr; }
 
 const String &currentUrl() { return lastUrl; }
 
