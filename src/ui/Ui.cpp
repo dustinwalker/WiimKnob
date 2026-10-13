@@ -46,6 +46,8 @@ lv_obj_t *frontImg = nullptr; // over them: the plain art, faded in as the contr
 const lv_img_dsc_t *plainArt = nullptr;
 const lv_img_dsc_t *tintedArt = nullptr; // backdrop while the controls are up
 lv_obj_t *controlsLayer = nullptr;
+lv_obj_t *tickerPill = nullptr; // "title · artist" left over the art while the controls are hidden
+lv_obj_t *tickerLabel = nullptr;
 bool controlsShown = true;
 uint32_t controlsTimeoutMs = 8000;
 
@@ -137,7 +139,10 @@ void applyArt() {
 
 void frontImgOpaCb(void *img, int32_t v) { lv_obj_set_style_img_opa((lv_obj_t *)img, v, 0); }
 
-void onControlsFadedOut(lv_anim_t *) { lv_obj_add_flag(controlsLayer, LV_OBJ_FLAG_HIDDEN); }
+void onControlsFadedOut(lv_anim_t *) {
+  lv_obj_add_flag(controlsLayer, LV_OBJ_FLAG_HIDDEN);
+  if (lv_label_get_text(tickerLabel)[0]) lv_obj_clear_flag(tickerPill, LV_OBJ_FLAG_HIDDEN);
+}
 
 void setControlsShown(bool shown) {
   // With no art there's nothing to look at but the controls, so they stay up.
@@ -146,6 +151,7 @@ void setControlsShown(bool shown) {
   controlsShown = shown;
   lv_anim_del(frontImg, frontImgOpaCb);
   if (shown) {
+    lv_obj_add_flag(tickerPill, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(frontImg, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(controlsLayer, LV_OBJ_FLAG_HIDDEN);
     return;
@@ -408,6 +414,28 @@ void begin(const Callbacks &cbs) {
   frontImg = lv_img_create(np);
   lv_obj_center(frontImg);
   lv_obj_add_flag(frontImg, LV_OBJ_FLAG_HIDDEN);
+
+  tickerPill = lv_obj_create(np);
+  lv_obj_set_size(tickerPill, 240, 34);
+  lv_obj_set_style_radius(tickerPill, 17, 0);
+  lv_obj_set_style_bg_color(tickerPill, lv_color_black(), 0);
+  lv_obj_set_style_bg_opa(tickerPill, LV_OPA_50, 0);
+  lv_obj_set_style_border_width(tickerPill, 0, 0);
+  lv_obj_set_style_pad_hor(tickerPill, 14, 0);
+  lv_obj_set_style_pad_ver(tickerPill, 0, 0);
+  lv_obj_align(tickerPill, LV_ALIGN_CENTER, 0, 128);
+  lv_obj_clear_flag(tickerPill, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_clear_flag(tickerPill, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_flag(tickerPill, LV_OBJ_FLAG_HIDDEN);
+
+  tickerLabel = lv_label_create(tickerPill);
+  lv_obj_set_width(tickerLabel, lv_pct(100));
+  lv_label_set_long_mode(tickerLabel, LV_LABEL_LONG_SCROLL_CIRCULAR);
+  lv_obj_set_style_text_align(tickerLabel, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_text_font(tickerLabel, &lv_font_montserrat_16_latin, 0);
+  lv_obj_set_style_text_color(tickerLabel, lv_color_white(), 0);
+  lv_obj_center(tickerLabel);
+  lv_label_set_text(tickerLabel, "");
 
   volumeArc = lv_arc_create(ctrl);
   lv_obj_set_size(volumeArc, 356, 356);
@@ -739,6 +767,13 @@ void setTrack(const char *title, const char *artist, const char *album) {
   lv_label_set_text(titleLabel, (title && title[0]) ? title : "Not playing");
   lv_label_set_text(artistLabel, artist ? artist : "");
   lv_label_set_text(albumLabel, album ? album : "");
+
+  if (title && title[0] && artist && artist[0]) {
+    lv_label_set_text_fmt(tickerLabel, "%s \xE2\x80\xA2 %s", title, artist); // U+2022 bullet
+  } else {
+    lv_label_set_text(tickerLabel, (title && title[0]) ? title : "");
+  }
+  if (!lv_label_get_text(tickerLabel)[0]) lv_obj_add_flag(tickerPill, LV_OBJ_FLAG_HIDDEN);
 }
 
 void setAlbumArt(const lv_img_dsc_t *art, const lv_img_dsc_t *tinted) {
