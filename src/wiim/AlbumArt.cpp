@@ -109,6 +109,7 @@ bool ensureSmallCap(size_t neededBytes) {
 // destination pixel covers -- looks meaningfully sharper for the same cost of one extra pass
 // over the source (each source pixel is visited once, no more).
 // srcStride is the source's full row width in pixels, so this can also downscale a crop of it.
+// Pixels are big-endian RGB565 in and out, matching LV_COLOR_16_SWAP.
 void boxDownscale(const uint16_t *src, int srcStride, int srcW, int srcH, uint16_t *dst, int dstW, int dstH) {
   for (int dy = 0; dy < dstH; dy++) {
     int sy0 = dy * srcH / dstH;
@@ -123,7 +124,7 @@ void boxDownscale(const uint16_t *src, int srcStride, int srcW, int srcH, uint16
       for (int sy = sy0; sy < sy1; sy++) {
         const uint16_t *row = &src[sy * srcStride];
         for (int sx = sx0; sx < sx1; sx++) {
-          uint16_t px = row[sx];
+          uint16_t px = __builtin_bswap16(row[sx]);
           rSum += (px >> 11) & 0x1F;
           gSum += (px >> 5) & 0x3F;
           bSum += px & 0x1F;
@@ -131,7 +132,7 @@ void boxDownscale(const uint16_t *src, int srcStride, int srcW, int srcH, uint16
         }
       }
       uint16_t r = rSum / count, g = gSum / count, b = bSum / count;
-      dst[dy * dstW + dx] = (uint16_t)((r << 11) | (g << 5) | b);
+      dst[dy * dstW + dx] = __builtin_bswap16((uint16_t)((r << 11) | (g << 5) | b));
     }
   }
 }
@@ -228,7 +229,7 @@ bool fetch(const String &url) {
   decodeTargetW = outW;
   decodeTargetH = outH;
 
-  jpeg.setPixelType(RGB565_LITTLE_ENDIAN);
+  jpeg.setPixelType(RGB565_BIG_ENDIAN); // LV_COLOR_16_SWAP
   bool ok = jpeg.decode(0, 0, scaleFlag) == 1;
   jpeg.close();
   decodeTarget = nullptr;
