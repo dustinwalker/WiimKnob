@@ -14,6 +14,10 @@
 // network only. We intentionally skip certificate validation (WiFiClientSecure::setInsecure)
 // since there is no CA to validate against and the device is only reachable on your LAN.
 
+// Uncomment to require a password for over-the-air updates (see platformio.ini). Without it,
+// anything on your LAN can flash the knob while it's awake.
+// #define OTA_PASSWORD "choose-one"
+
 // How often to poll the WiiM for play/pause/volume state.
 #define POLL_STATUS_MS 1200
 

@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <ArduinoOTA.h>
 #include <WiFi.h>
 #include <lvgl.h>
 
@@ -196,6 +197,22 @@ void serviceScreenOffTouch() {
   }
 }
 
+// Over-the-air updates: `pio run -e esp32-s3-knob-ota -t upload` sends a new build to
+// wiimknob.local over Wi-Fi. The knob has to be awake (not in deep sleep) to receive it.
+void beginOta() {
+  ArduinoOTA.setHostname("wiimknob");
+#ifdef OTA_PASSWORD
+  ArduinoOTA.setPassword(OTA_PASSWORD);
+#endif
+  ArduinoOTA.onStart([]() { Serial.println("[ota] update starting"); });
+  ArduinoOTA.onProgress([](unsigned int done, unsigned int total) {
+    power::noteActivity(); // don't time out into deep sleep mid-update
+  });
+  ArduinoOTA.onEnd([]() { Serial.println("[ota] done, rebooting"); });
+  ArduinoOTA.onError([](ota_error_t err) { Serial.printf("[ota] error %u\n", err); });
+  ArduinoOTA.begin();
+}
+
 void connectWiFi() {
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
@@ -301,6 +318,7 @@ void setup() {
   power::battery::begin();
 
   connectWiFi();
+  beginOta();
 
   wiim::task::begin();
 }
@@ -329,6 +347,7 @@ void loop() {
   serviceBattery();
   power::service();
   settings::service();
+  ArduinoOTA.handle();
 
   delay(5);
 }
