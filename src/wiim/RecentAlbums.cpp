@@ -35,7 +35,9 @@ lv_img_dsc_t thumbDesc[kMaxAlbums] = {};
 bool haveThumb[kMaxAlbums] = {};
 
 String queuePath(int slot) { return String(kDir) + "/q" + slot + ".xml"; }
-String thumbPath(int slot) { return String(kDir) + "/t" + slot + ".rgb"; }
+// .be: big-endian RGB565 (LV_COLOR_16_SWAP). Older builds saved little-endian .rgb files.
+String thumbPath(int slot) { return String(kDir) + "/t" + slot + ".be"; }
+String legacyThumbPath(int slot) { return String(kDir) + "/t" + slot + ".rgb"; }
 
 constexpr size_t kThumbBytes = (size_t)kThumbSize * kThumbSize * 2;
 
@@ -68,9 +70,25 @@ void saveIndex() {
 void loadThumb(int slot) {
   haveThumb[slot] = false;
   File f = LittleFS.open(thumbPath(slot), "r");
+  if (f) {
+    haveThumb[slot] = f.read((uint8_t *)thumbPixels[slot], kThumbBytes) == kThumbBytes;
+    f.close();
+    return;
+  }
+  String legacy = legacyThumbPath(slot);
+  f = LittleFS.open(legacy, "r");
   if (!f) return;
-  haveThumb[slot] = f.read((uint8_t *)thumbPixels[slot], kThumbBytes) == kThumbBytes;
+  bool ok = f.read((uint8_t *)thumbPixels[slot], kThumbBytes) == kThumbBytes;
   f.close();
+  LittleFS.remove(legacy);
+  if (!ok) return;
+  for (size_t i = 0; i < kThumbBytes / 2; i++) thumbPixels[slot][i] = __builtin_bswap16(thumbPixels[slot][i]);
+  File out = LittleFS.open(thumbPath(slot), "w");
+  if (out) {
+    out.write((const uint8_t *)thumbPixels[slot], kThumbBytes);
+    out.close();
+  }
+  haveThumb[slot] = true;
 }
 
 int findByAlbum(const String &album, const String &artist); // defined below
