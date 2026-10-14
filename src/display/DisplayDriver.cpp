@@ -45,6 +45,7 @@ struct FlushJob {
   const uint8_t *pixels;
 };
 QueueHandle_t jobs = nullptr;
+SemaphoreHandle_t panelAsleep = nullptr;
 
 void sendCommand(uint8_t cmd, const uint8_t *data, int len) {
   spi_transaction_t t = {};
@@ -70,6 +71,12 @@ void flushTask(void *) {
   FlushJob job;
   for (;;) {
     xQueueReceive(jobs, &job, portMAX_DELAY);
+    if (!job.drv) { // sleepPanel(): display off, then the controller's own sleep mode
+      sendCommand(0x28, nullptr, 0);
+      sendCommand(0x10, nullptr, 0);
+      xSemaphoreGive(panelAsleep);
+      continue;
+    }
     const lv_area_t &a = job.area;
     uint8_t caset[4] = {(uint8_t)(a.x1 >> 8), (uint8_t)a.x1, (uint8_t)(a.x2 >> 8), (uint8_t)a.x2};
     uint8_t raset[4] = {(uint8_t)(a.y1 >> 8), (uint8_t)a.y1, (uint8_t)(a.y2 >> 8), (uint8_t)a.y2};
@@ -142,6 +149,7 @@ void begin() {
     assert(b); // boot-time, before Wi-Fi/TLS take internal RAM; nothing useful runs without them
   }
   jobs = xQueueCreate(1, sizeof(FlushJob));
+  panelAsleep = xSemaphoreCreateBinary();
   xTaskCreatePinnedToCore(flushTask, "lcdflush", 3072, nullptr, configMAX_PRIORITIES - 2, nullptr, 0);
 
   setBacklightOn(true);
@@ -162,6 +170,13 @@ void begin() {
 }
 
 void tick() { lv_timer_handler(); }
+
+void sleepPanel() {
+  FlushJob job = {nullptr, {}, nullptr};
+  xQueueSend(jobs, &job, pdMS_TO_TICKS(200));
+  xSemaphoreTake(panelAsleep, pdMS_TO_TICKS(300));
+  delay(120); // ST77916 needs 120ms after SLPIN before power can drop
+}
 
 void refreshNow() { lv_refr_now(NULL); }
 
