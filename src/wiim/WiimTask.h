@@ -30,6 +30,9 @@ void requestVolume(int volume0to100);
 
 // How often play state and volume are polled. Defaults to POLL_STATUS_MS from Config.h.
 void setStatusPollMs(uint32_t ms);
+// Defaults to POLL_METADATA_MS from Config.h.
+void setMetadataPollMs(uint32_t ms);
+void requestMetadataRefresh();
 
 // Whether newly played albums are saved to Recently played (off while that page is hidden).
 void setRecentCapture(bool on);

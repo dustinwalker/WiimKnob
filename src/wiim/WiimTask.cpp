@@ -64,6 +64,8 @@ int pendingVolume = -1;
 // Set by the command task after something that likely changed the track (preset, replay,
 // next/prev), so the background task re-reads metadata right away instead of on its timer.
 volatile bool metaRefreshRequested = false;
+volatile bool metaRefreshNow = false; // a plain re-read, without the skip follow-up
+volatile uint32_t metaPollMs = POLL_METADATA_MS;
 
 volatile uint32_t statusPollMs = POLL_STATUS_MS;
 volatile bool recentCapture = true;
@@ -283,6 +285,10 @@ void bgTaskFn(void *) {
 
   for (;;) {
     uint32_t now = millis();
+    if (metaRefreshNow) {
+      metaRefreshNow = false;
+      forceMeta = true;
+    }
     if (metaRefreshRequested) {
       metaRefreshRequested = false;
       forceMeta = true;
@@ -290,7 +296,7 @@ void bgTaskFn(void *) {
       followFromVersion = metadataVersion();
     }
     bool following = (int32_t)(followUntilMs - now) > 0;
-    if (forceMeta || now - lastMetaMs >= (following ? kSkipPollMs : POLL_METADATA_MS)) {
+    if (forceMeta || now - lastMetaMs >= (following ? kSkipPollMs : metaPollMs)) {
       refreshMetadata();
       lastMetaMs = now;
       forceMeta = false;
@@ -376,6 +382,10 @@ TrackMetadata getMetadata() {
 }
 
 void setStatusPollMs(uint32_t ms) { statusPollMs = ms; }
+
+void setMetadataPollMs(uint32_t ms) { metaPollMs = ms; }
+
+void requestMetadataRefresh() { metaRefreshNow = true; }
 
 void setRecentCapture(bool on) { recentCapture = on; }
 

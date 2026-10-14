@@ -363,11 +363,29 @@ void serviceKnob() {
 // modem sleep (which adds 100-400ms of latency to every WiiM request), and poll faster.
 constexpr uint32_t kExternalStatusPollMs = 500;
 
+// While the screen is dark on battery: poll less and drop the CPU to 80MHz (the lowest Wi-Fi
+// allows). 3s status polls still keep the command connection warm -- the WiiM drops idle
+// keep-alive after ~5-10s -- so a dark double-tap or knob turn goes out as fast as before.
+constexpr uint32_t kDarkStatusPollMs = 3000;
+constexpr uint32_t kDarkMetadataPollMs = 10000;
+
+void applyPollRates() {
+  bool dark = !power::isScreenOn() && !onExternalPower;
+  wiim::task::setStatusPollMs(onExternalPower ? kExternalStatusPollMs : dark ? kDarkStatusPollMs : POLL_STATUS_MS);
+  wiim::task::setMetadataPollMs(dark ? kDarkMetadataPollMs : POLL_METADATA_MS);
+  setCpuFrequencyMhz(dark ? 80 : 240);
+}
+
+void onScreenChange(bool on) {
+  applyPollRates();
+  if (on) wiim::task::requestMetadataRefresh();
+}
+
 void applyPowerSource(bool external) {
   onExternalPower = external;
   power::setExternalPower(external);
   WiFi.setSleep(!external);
-  wiim::task::setStatusPollMs(external ? kExternalStatusPollMs : POLL_STATUS_MS);
+  applyPollRates();
   Serial.printf("[power] %s\n", external ? "USB power: staying awake" : "on battery");
 }
 
@@ -415,6 +433,7 @@ void setup() {
   haptics::begin(); // after touch.begin(), which brings up the I2C bus haptics shares
   input::knob::begin();
   power::begin();
+  power::setScreenCallback(onScreenChange);
   power::battery::begin();
 
   netConfig = net::load();

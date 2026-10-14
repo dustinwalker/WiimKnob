@@ -17,6 +17,7 @@ uint32_t screenTimeoutMs = (uint32_t)SCREEN_TIMEOUT_S * 1000;
 uint32_t sleepTimeoutMs = (uint32_t)DEEP_SLEEP_TIMEOUT_MIN * 60000UL;
 bool externalPower = false;
 bool dimmed = false;
+void (*screenCallback)(bool on) = nullptr;
 constexpr uint32_t kDimLeadMs = 15000; // how long before screen-off the backlight dims
 
 void enterDeepSleep(const char *reason) {
@@ -62,6 +63,7 @@ void noteActivity() {
     dimmed = false;
   }
   if (!screenOn) {
+    if (screenCallback) screenCallback(true);
     display::setBacklightOn(true);
     screenOn = true;
   }
@@ -81,6 +83,7 @@ void service() {
   if (screenOn && idleMs > screenTimeoutMs) {
     display::setBacklightOn(false);
     screenOn = false;
+    if (screenCallback) screenCallback(false);
   }
 
   if (idleMs > sleepTimeoutMs) {
@@ -91,6 +94,8 @@ void service() {
 bool isScreenOn() { return screenOn; }
 
 bool isDimmed() { return dimmed; }
+
+void setScreenCallback(void (*cb)(bool on)) { screenCallback = cb; }
 
 void setScreenTimeout(uint32_t seconds) { screenTimeoutMs = seconds * 1000; }
 

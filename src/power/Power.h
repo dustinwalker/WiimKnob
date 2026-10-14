@@ -28,6 +28,8 @@ void setExternalPower(bool on);
 // matters while something is actually visible (see main.cpp's loop(), which stops pumping
 // LVGL -- and therefore stops reading touch through it -- while this is false).
 bool isScreenOn();
+// Called as the backlight turns on or off, before anything draws.
+void setScreenCallback(void (*cb)(bool on));
 bool isDimmed();
 
 } // namespace power
