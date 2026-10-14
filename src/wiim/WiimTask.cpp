@@ -71,6 +71,11 @@ bool artPending = false;
 uint32_t artPendingSinceMs = 0;
 constexpr uint32_t kArtPendingMaxMs = 8000; // some sources never send art for a track
 String lastAlbumArtUrl;
+// A cover link that failed to download (404, PNG, dead host) is retried this rarely, not on
+// every metadata poll -- each attempt costs a TLS handshake and would re-dim the art.
+String lastFailedArtUrl;
+uint32_t lastArtFailMs = 0;
+constexpr uint32_t kArtRetryMs = 30000;
 
 // Some sources (seen with Qobuz Connect) report status "none" whether playing or paused. Infer
 // it from whether the track position is moving instead. Paused only after two unchanged
@@ -122,7 +127,12 @@ void refreshMetadata() {
   diag.metaOk++;
   diag.lastMetaOkMs = millis();
 
-  bool needArt = meta.albumArtUrl.startsWith("http") && meta.albumArtUrl != lastAlbumArtUrl;
+  uint32_t now = millis();
+  bool newArtUrl = meta.albumArtUrl.startsWith("http") && meta.albumArtUrl != lastAlbumArtUrl &&
+                   meta.albumArtUrl != lastFailedArtUrl;
+  bool retryFailedArt = meta.albumArtUrl.length() && meta.albumArtUrl == lastFailedArtUrl &&
+                        now - lastArtFailMs > kArtRetryMs;
+  bool needArt = newArtUrl || retryFailedArt;
 
   // Publish the text before downloading art, so the title doesn't wait on the download. The
   // art is pending while that download runs, or when the album changed but the WiiM is still
@@ -130,12 +140,12 @@ void refreshMetadata() {
   xSemaphoreTake(stateMutex, portMAX_DELAY);
   bool textChanged = meta.title != latestMeta.title || meta.artist != latestMeta.artist ||
                      meta.album != latestMeta.album;
-  if (needArt || (meta.album != latestMeta.album && !artPending)) {
+  if (newArtUrl || meta.album != latestMeta.album) {
     artPending = true;
-    artPendingSinceMs = millis();
+    artPendingSinceMs = now;
   }
   latestMeta = meta;
-  if (textChanged || needArt) {
+  if (textChanged) {
     metaVersionCounter++;
   }
   PlayerState player = latestPlayer;
@@ -148,11 +158,17 @@ void refreshMetadata() {
     bgClient.closeConnection();
     if (wiim::albumart::fetch(meta.albumArtUrl)) {
       lastAlbumArtUrl = meta.albumArtUrl;
+      lastFailedArtUrl = "";
       xSemaphoreTake(stateMutex, portMAX_DELAY);
       artPending = false;
       metaVersionCounter++;
       xSemaphoreGive(stateMutex);
     } else {
+      lastFailedArtUrl = meta.albumArtUrl;
+      lastArtFailMs = millis();
+      xSemaphoreTake(stateMutex, portMAX_DELAY);
+      artPending = false; // keep showing the old art undimmed rather than waiting on a dead link
+      xSemaphoreGive(stateMutex);
       diag.artFailures++;
       Serial.printf("[art] fetch failed (internal heap free %u, largest block %u)\n",
                     (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
