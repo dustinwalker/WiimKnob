@@ -151,6 +151,31 @@ void boxDownscale(const uint16_t *src, int srcStride, int srcW, int srcH, uint16
 
 } // namespace
 
+// Small covers are enlarged once here rather than zoomed by LVGL, which would rescale them in
+// software on every redraw (and leave them without a tinted backdrop). Big-endian RGB565.
+void bilinearUpscale(const uint16_t *src, int srcW, int srcH, uint16_t *dst, int dstW, int dstH) {
+  for (int dy = 0; dy < dstH; dy++) {
+    uint32_t fy = (uint32_t)dy * (srcH - 1) * 256 / max(1, dstH - 1);
+    int y0 = fy >> 8, y1 = min(y0 + 1, srcH - 1);
+    uint32_t wy = fy & 0xFF;
+    for (int dx = 0; dx < dstW; dx++) {
+      uint32_t fx = (uint32_t)dx * (srcW - 1) * 256 / max(1, dstW - 1);
+      int x0 = fx >> 8, x1 = min(x0 + 1, srcW - 1);
+      uint32_t wx = fx & 0xFF;
+      uint16_t p[4] = {__builtin_bswap16(src[y0 * srcW + x0]), __builtin_bswap16(src[y0 * srcW + x1]),
+                       __builtin_bswap16(src[y1 * srcW + x0]), __builtin_bswap16(src[y1 * srcW + x1])};
+      uint32_t w[4] = {(256 - wx) * (256 - wy), wx * (256 - wy), (256 - wx) * wy, wx * wy};
+      uint32_t r = 0, g = 0, b = 0;
+      for (int i = 0; i < 4; i++) {
+        r += ((p[i] >> 11) & 0x1F) * w[i];
+        g += ((p[i] >> 5) & 0x3F) * w[i];
+        b += (p[i] & 0x1F) * w[i];
+      }
+      dst[dy * dstW + dx] = __builtin_bswap16((uint16_t)(((r >> 16) << 11) | ((g >> 16) << 5) | (b >> 16)));
+    }
+  }
+}
+
 // Saturated pixels count for more, so a colorful cover on a gray background picks the color.
 void dominantColor(const uint16_t *src, int stride, int side, uint8_t &r, uint8_t &g, uint8_t &b) {
   uint32_t rs = 0, gs = 0, bs = 0, ws = 0;
@@ -345,6 +370,15 @@ bool fetch(const String &url) {
     }
     // If the allocation failed, finalBuf/W/H just stay at the full decoded size -- worse
     // quality on a very low-memory day, not a missing image.
+  } else if (decodedShortest < kWorkingSize && decodedShortest > 0) {
+    int bigW = outW * kWorkingSize / decodedShortest;
+    int bigH = outH * kWorkingSize / decodedShortest;
+    if (ensureSmallCap((size_t)bigW * bigH * 2)) {
+      bilinearUpscale(pixelBuf, outW, outH, smallBuf, bigW, bigH);
+      finalBuf = smallBuf;
+      finalW = bigW;
+      finalH = bigH;
+    }
   }
 
   ShownArt &art = shown[current == 0 ? 1 : 0];
