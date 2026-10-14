@@ -10,6 +10,7 @@
 #include "input/Knob.h"
 #include "input/Touch.h"
 #include "net/NetConfig.h"
+#include "net/SetupPortal.h"
 #include "power/Battery.h"
 #include "power/Power.h"
 #include "settings/Settings.h"
@@ -266,6 +267,30 @@ bool connectWiFi(uint32_t timeoutMs) {
   return true;
 }
 
+void onWifiSetup() {
+  haptics::buzz();
+  net::requestSetup();
+  ESP.restart();
+}
+
+void setupTick() { display::tick(); }
+
+const char *signalText(int rssi, char *buf, size_t len) {
+  const char *quality = rssi > -60 ? "Excellent" : rssi > -67 ? "Good" : rssi > -75 ? "Fair" : "Weak";
+  snprintf(buf, len, "%s (%d dBm)", quality, rssi);
+  return buf;
+}
+
+void serviceNetworkInfo() {
+  static uint32_t lastMs = 0;
+  if (millis() - lastMs < 2000) return;
+  lastMs = millis();
+  char signal[32];
+  String wiim = netConfig.wiimName.length() ? netConfig.wiimName : netConfig.wiimHost;
+  ui::setNetworkInfo(netConfig.ssid.c_str(), WiFi.localIP().toString().c_str(),
+                     signalText(WiFi.RSSI(), signal, sizeof(signal)), wiim.c_str());
+}
+
 // Mirrors whatever the background WiiM task last found onto the UI. Cheap (a couple of mutex-
 // protected struct copies), so it's fine to call every loop() iteration -- no polling timer of
 // its own needed here, since wiim::task owns that cadence.
@@ -352,7 +377,7 @@ void setup() {
 
   display::begin();
 
-  ui::Callbacks callbacks = {onPrev, onNext, onPlayPause, onPreset, onRecent, onSettingTapped};
+  ui::Callbacks callbacks = {onPrev, onNext, onPlayPause, onPreset, onRecent, onSettingTapped, onWifiSetup};
   ui::begin(callbacks);
 
   settings::begin();
@@ -375,7 +400,9 @@ void setup() {
   power::battery::begin();
 
   netConfig = net::load();
-  while (!connectWiFi(20000)) {
+  bool setupRequested = net::takeSetupRequest();
+  if (setupRequested || !connectWiFi(20000)) {
+    net::portal::run(netConfig, setupTick);
   }
   beginOta();
   beginStatusServer();
@@ -407,6 +434,7 @@ void loop() {
   serviceBattery();
   power::service();
   settings::service();
+  serviceNetworkInfo();
   ArduinoOTA.handle();
   statusServer.handleClient();
 

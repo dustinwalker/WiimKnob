@@ -11,6 +11,7 @@ struct Callbacks {
   void (*onPreset)(int key); // 1-based preset slot
   void (*onRecent)(int id);  // RecentTile::id of the tapped album
   void (*onSettingTapped)(int index);
+  void (*onWifiSetup)(); // held, not tapped: it restarts the knob into setup mode
 };
 
 enum class PresetIcon { kDisc, kHeadphones, kEq, kMusic };
@@ -59,5 +60,12 @@ void setSettings(const char *const *labels, int count);
 void setSettingValue(int index, const char *text);
 void setSelectedSetting(int index);
 bool isSettingsActive();
+
+// Network page: read-only status plus a hold-to-start Wi-Fi setup button.
+void setNetworkInfo(const char *ssid, const char *ip, const char *signal, const char *wiim);
+
+// Full-screen Wi-Fi setup instructions, replacing the normal pages (see net::portal).
+void showSetup(const char *apName, const char *qrPayload, void (*onCancel)());
+void setSetupStatus(const char *text);
 
 } // namespace ui
