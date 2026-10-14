@@ -55,6 +55,10 @@ uint32_t progressBaseTick = 0;
 bool progressPlaying = false;
 lv_obj_t *skipFlash = nullptr; // big prev/next icon after a swipe on the art
 lv_obj_t *skipFlashIcon = nullptr;
+lv_obj_t *skipSpinner = nullptr;
+bool skipPending = false; // waiting for the WiiM to report the track a skip asked for
+uint32_t skipStartedMs = 0;
+constexpr uint32_t kSkipWaitMaxMs = 6000;
 lv_obj_t *tickerPill = nullptr; // "title · artist" left over the art while the controls are hidden
 lv_obj_t *tickerLabel = nullptr;
 bool controlsShown = true;
@@ -105,13 +109,17 @@ void (*setupCancel)() = nullptr;
 constexpr int kBattIconW = 32, kBattIconH = 18;
 constexpr int kBattFillMaxW = kBattIconW - 6; // inset from the outline's border
 
+void startSkip(bool next);
+
 void onPrevClicked(lv_event_t *e) {
   (void)e;
+  startSkip(false);
   if (callbacks.onPrev) callbacks.onPrev();
 }
 
 void onNextClicked(lv_event_t *e) {
   (void)e;
+  startSkip(true);
   if (callbacks.onNext) callbacks.onNext();
 }
 
@@ -219,6 +227,36 @@ void onArtTapped(lv_event_t *e) {
   setControlsShown(!controlsShown);
 }
 
+void endSkip() {
+  if (!skipPending) return;
+  skipPending = false;
+  lv_obj_set_style_text_opa(titleLabel, LV_OPA_COVER, 0);
+  lv_obj_set_style_text_opa(artistLabel, LV_OPA_COVER, 0);
+  lv_obj_add_flag(skipSpinner, LV_OBJ_FLAG_HIDDEN);
+  if (!lv_obj_has_flag(skipFlash, LV_OBJ_FLAG_HIDDEN)) lv_obj_fade_out(skipFlash, 300, 0);
+}
+
+// The flash stays up (with a spinner) over the art, or the title dims under the controls,
+// until the new track's metadata arrives -- the WiiM can take a second or two to switch.
+void startSkip(bool next) {
+  skipPending = true;
+  skipStartedMs = lv_tick_get();
+  if (controlsShown) {
+    lv_obj_set_style_text_opa(titleLabel, LV_OPA_40, 0);
+    lv_obj_set_style_text_opa(artistLabel, LV_OPA_40, 0);
+    return;
+  }
+  lv_label_set_text(skipFlashIcon, next ? LV_SYMBOL_NEXT : LV_SYMBOL_PREV);
+  lv_anim_del(skipFlash, NULL);
+  lv_obj_set_style_opa(skipFlash, LV_OPA_COVER, 0);
+  lv_obj_clear_flag(skipFlash, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_clear_flag(skipSpinner, LV_OBJ_FLAG_HIDDEN);
+}
+
+void skipTimerCb(lv_timer_t *) {
+  if (skipPending && lv_tick_elaps(skipStartedMs) > kSkipWaitMaxMs) endSkip();
+}
+
 void onGesture(lv_event_t *e) {
   (void)e;
   lv_indev_t *indev = lv_indev_get_act();
@@ -229,11 +267,7 @@ void onGesture(lv_event_t *e) {
   // With only the art showing, swipes skip tracks; tap first to bring up the controls and page.
   if (activeScreen == kNowPlaying && !controlsShown && (dir == LV_DIR_LEFT || dir == LV_DIR_RIGHT)) {
     bool next = dir == LV_DIR_LEFT;
-    lv_label_set_text(skipFlashIcon, next ? LV_SYMBOL_NEXT : LV_SYMBOL_PREV);
-    lv_anim_del(skipFlash, NULL);
-    lv_obj_set_style_opa(skipFlash, LV_OPA_COVER, 0);
-    lv_obj_clear_flag(skipFlash, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_fade_out(skipFlash, 300, 400);
+    startSkip(next);
     if (next && callbacks.onNext) callbacks.onNext();
     if (!next && callbacks.onPrev) callbacks.onPrev();
     return;
@@ -532,10 +566,21 @@ void begin(const Callbacks &cbs) {
   lv_obj_clear_flag(skipFlash, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_clear_flag(skipFlash, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_flag(skipFlash, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_set_style_pad_all(skipFlash, 0, 0);
   skipFlashIcon = lv_label_create(skipFlash);
   lv_obj_set_style_text_font(skipFlashIcon, &lv_font_media_icons_36, 0);
   lv_obj_set_style_text_color(skipFlashIcon, lv_color_white(), 0);
   lv_obj_center(skipFlashIcon);
+  skipSpinner = lv_spinner_create(skipFlash, 900, 70);
+  lv_obj_set_size(skipSpinner, 90, 90);
+  lv_obj_center(skipSpinner);
+  lv_obj_set_style_arc_width(skipSpinner, 3, LV_PART_MAIN);
+  lv_obj_set_style_arc_width(skipSpinner, 3, LV_PART_INDICATOR);
+  lv_obj_set_style_arc_opa(skipSpinner, LV_OPA_TRANSP, LV_PART_MAIN);
+  lv_obj_set_style_arc_color(skipSpinner, lv_color_white(), LV_PART_INDICATOR);
+  lv_obj_clear_flag(skipSpinner, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_flag(skipSpinner, LV_OBJ_FLAG_HIDDEN);
+  lv_timer_create(skipTimerCb, 250, NULL);
 
   tickerPill = lv_obj_create(np);
   lv_obj_set_size(tickerPill, 240, 34);
@@ -986,6 +1031,7 @@ void setSetupStatus(const char *text) {
 }
 
 void setTrack(const char *title, const char *artist, const char *album) {
+  endSkip();
   lv_label_set_text(titleLabel, (title && title[0]) ? title : "Not playing");
   lv_label_set_text(artistLabel, artist ? artist : "");
   lv_label_set_text(albumLabel, album ? album : "");
@@ -1039,6 +1085,7 @@ void setPlaying(bool playing) {
 
 void setProgress(long positionMs, long durationMs, bool playing) {
   if (positionMs == progressBaseMs && durationMs == progressDurationMs && playing == progressPlaying) return;
+  if (skipPending && positionMs < 3000 && progressBaseMs > 5000) endSkip(); // "previous" restarted the same track
   progressBaseMs = positionMs;
   progressDurationMs = durationMs;
   progressPlaying = playing;
