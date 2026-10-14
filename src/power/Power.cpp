@@ -1,11 +1,13 @@
 #include "Power.h"
 #include "Config.h"
 #include "Pins.h"
+#include "Battery.h"
 #include "display/DisplayDriver.h"
 
 #include <Arduino.h>
 #include <driver/rtc_io.h>
 #include <esp_sleep.h>
+#include <sys/time.h>
 
 namespace power {
 
@@ -19,6 +21,33 @@ bool externalPower = false;
 bool dimmed = false;
 void (*screenCallback)(bool on) = nullptr;
 constexpr uint32_t kDimLeadMs = 15000; // how long before screen-off the backlight dims
+
+// Survive deep sleep (RTC slow memory), but not a power loss: after a flat battery they read 0,
+// which is itself the answer to "did it run flat or fail to wake?".
+RTC_DATA_ATTR float rtcSleepVolts = 0;
+RTC_DATA_ATTR int64_t rtcSleepAtS = 0;
+RTC_DATA_ATTR char rtcSleepReason[24] = "";
+BootInfo bootInfo;
+
+int64_t nowSeconds() {
+  struct timeval tv;
+  gettimeofday(&tv, nullptr); // kept running through deep sleep by the RTC
+  return tv.tv_sec;
+}
+
+const char *resetReasonName(esp_reset_reason_t r) {
+  switch (r) {
+  case ESP_RST_POWERON: return "power-on";
+  case ESP_RST_DEEPSLEEP: return "deep-sleep wake";
+  case ESP_RST_SW: return "software restart";
+  case ESP_RST_PANIC: return "crash";
+  case ESP_RST_INT_WDT:
+  case ESP_RST_TASK_WDT:
+  case ESP_RST_WDT: return "watchdog";
+  case ESP_RST_BROWNOUT: return "brownout";
+  default: return "other";
+  }
+}
 
 void enterDeepSleep(const char *reason) {
   display::setBacklightOn(false);
@@ -41,8 +70,13 @@ void enterDeepSleep(const char *reason) {
   uint64_t wakePins = (1ULL << PIN_KNOB_CW) | (1ULL << PIN_KNOB_CCW) | (1ULL << PIN_TOUCH_INT);
   esp_sleep_enable_ext1_wakeup(wakePins, ESP_EXT1_WAKEUP_ANY_LOW);
 
+  rtcSleepVolts = battery::lastRawVoltage();
+  rtcSleepAtS = nowSeconds();
+  strlcpy(rtcSleepReason, reason, sizeof(rtcSleepReason));
+
   Serial.printf("%s, entering deep sleep. Turn the knob or touch the screen to wake.\n", reason);
   Serial.flush();
+  display::sleepPanel();
 
   // ext1's wake condition is level-based, checked continuously once asleep. A brief settle
   // delay here is cheap insurance against a wake pin still transitioning right as we fall
@@ -54,7 +88,26 @@ void enterDeepSleep(const char *reason) {
 
 } // namespace
 
-void begin() { lastActivityMs = millis(); }
+void begin() {
+  lastActivityMs = millis();
+  esp_reset_reason_t reset = esp_reset_reason();
+  bootInfo.resetReason = resetReasonName(reset);
+  bootInfo.wakeSource = "none";
+  if (reset == ESP_RST_DEEPSLEEP && esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT1) {
+    uint64_t pins = esp_sleep_get_ext1_wakeup_status();
+    bootInfo.wakeSource = (pins & (1ULL << PIN_TOUCH_INT)) ? "touch" : (pins ? "knob" : "unknown");
+  }
+  if (rtcSleepAtS > 0) {
+    bootInfo.sleptSeconds = nowSeconds() - rtcSleepAtS;
+    bootInfo.sleepVolts = rtcSleepVolts;
+    bootInfo.sleepReason = rtcSleepReason;
+  }
+  rtcSleepAtS = 0;
+}
+
+const BootInfo &lastBoot() { return bootInfo; }
+
+void sleepNow(const char *reason) { enterDeepSleep(reason); }
 
 void noteActivity() {
   lastActivityMs = millis();

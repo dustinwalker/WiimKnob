@@ -245,18 +245,23 @@ power::battery::Reading lastBattery;
 void beginStatusServer() {
   statusServer.on("/status", HTTP_GET, []() {
     wiim::task::Diagnostics d = wiim::task::diagnostics();
-    char body[448];
+    const power::BootInfo &boot = power::lastBoot();
+    char body[640];
     snprintf(body, sizeof(body),
              "{\"voltage\":%.3f,\"percent\":%d,\"usb_power\":%s,\"uptime_s\":%lu,"
              "\"heap_internal\":%u,\"heap_internal_min\":%u,\"heap_internal_largest\":%u,"
              "\"rssi\":%d,\"meta_ok\":%u,\"meta_failures\":%u,\"art_failures\":%u,"
-             "\"meta_age_s\":%lu,\"cpu_mhz\":%lu,\"screen_on\":%s}\n",
+             "\"meta_age_s\":%lu,\"cpu_mhz\":%lu,\"screen_on\":%s,"
+             "\"boot\":{\"reason\":\"%s\",\"wake\":\"%s\",\"slept_s\":%lld,"
+             "\"sleep_voltage\":%.3f,\"sleep_reason\":\"%s\"}}\n",
              lastBattery.voltage, lastBattery.percent, lastBattery.externalPower ? "true" : "false",
              millis() / 1000, (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
              (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
              (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL), WiFi.RSSI(), d.metaOk,
              d.metaFailures, d.artFailures, (millis() - d.lastMetaOkMs) / 1000,
-             (unsigned long)getCpuFrequencyMhz(), power::isScreenOn() ? "true" : "false");
+             (unsigned long)getCpuFrequencyMhz(), power::isScreenOn() ? "true" : "false",
+             boot.resetReason, boot.wakeSource, (long long)boot.sleptSeconds, boot.sleepVolts,
+             boot.sleepReason);
     statusServer.send(200, "application/json", body);
   });
   statusServer.begin();
@@ -400,6 +405,7 @@ void serviceBattery() {
   lastBattery = reading;
   ui::setBattery(reading.percent, reading.externalPower);
   if (reading.externalPower != onExternalPower) applyPowerSource(reading.externalPower);
+
 
   // Not shown on screen anymore (see the battery screen removal) -- kept here so the raw
   // voltage is still checkable for calibrating BATTERY_DIVIDER_RATIO in Config.h.

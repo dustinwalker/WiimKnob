@@ -4,6 +4,19 @@
 
 namespace power {
 
+// Why this boot happened, and what the previous deep sleep looked like (if there was one).
+struct BootInfo {
+  const char *resetReason = "";  // "power-on", "deep-sleep wake", "crash", "brownout", ...
+  const char *wakeSource = "";   // "knob", "touch" or "none"
+  int64_t sleptSeconds = -1;     // -1: no deep sleep recorded (fresh power-on)
+  float sleepVolts = 0;          // battery voltage as it went to sleep
+  const char *sleepReason = "";
+};
+const BootInfo &lastBoot();
+
+// Deep sleep right away (e.g. on a low battery). Never returns.
+void sleepNow(const char *reason);
+
 // Starts the inactivity clock. Call once from setup(), after display::begin().
 void begin();
 

@@ -17,5 +17,8 @@ void begin();
 // seconds; no need to cache it yourself.
 Reading read();
 
+// The voltage from the most recent read(), unsmoothed. 0 before the first read.
+float lastRawVoltage();
+
 } // namespace battery
 } // namespace power

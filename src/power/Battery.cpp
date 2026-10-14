@@ -61,6 +61,7 @@ constexpr float kExternalOnVolts = 4.45f;
 constexpr float kExternalOffVolts = 4.35f;
 bool externalPower = false;
 int lastBatteryPercent = -1;
+float lastRaw = 0;
 
 } // namespace
 
@@ -78,6 +79,7 @@ Reading read() {
   float sensedVolts = (sumMilliVolts / (float)kSamples) / 1000.0f;
   float rawVoltage = sensedVolts * BATTERY_DIVIDER_RATIO;
 
+  lastRaw = rawVoltage;
   bool wasExternal = externalPower;
   externalPower = rawVoltage > (externalPower ? kExternalOffVolts : kExternalOnVolts);
 
@@ -96,6 +98,8 @@ Reading read() {
   r.hoursRemaining = (r.percent / 100.0f) * BATTERY_FULL_RUNTIME_HOURS;
   return r;
 }
+
+float lastRawVoltage() { return lastRaw; }
 
 } // namespace battery
 } // namespace power
