@@ -72,7 +72,7 @@ void setRecentEnabled(bool enabled);
 void setNetworkInfo(const char *ssid, const char *ip, const char *signal, const char *wiim);
 
 // Full-screen Wi-Fi setup instructions, replacing the normal pages (see net::portal).
-void showSetup(const char *apName, const char *qrPayload, void (*onCancel)());
+void showSetup(const char *apName, const char *apPassword, const char *qrPayload, void (*onCancel)());
 void setSetupStatus(const char *text);
 
 } // namespace ui

@@ -994,7 +994,7 @@ void setNetworkInfo(const char *ssid, const char *ip, const char *signal, const 
   }
 }
 
-void showSetup(const char *apName, const char *qrPayload, void (*onCancel)()) {
+void showSetup(const char *apName, const char *apPassword, const char *qrPayload, void (*onCancel)()) {
   setupCancel = onCancel;
   lv_obj_t *scr = lv_obj_create(NULL);
   lv_obj_set_style_bg_color(scr, lv_color_black(), 0);
@@ -1018,7 +1018,7 @@ void showSetup(const char *apName, const char *qrPayload, void (*onCancel)()) {
   lv_obj_set_style_text_align(hint, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_set_style_text_font(hint, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_color(hint, lv_color_hex(0xc8c8c8), 0);
-  lv_label_set_text_fmt(hint, "Scan with your phone, or join\n%s", apName);
+  lv_label_set_text_fmt(hint, "Scan with your phone, or join\n%s  /  %s", apName, apPassword);
   lv_obj_align(hint, LV_ALIGN_CENTER, 0, 36);
 
   setupStatus = lv_label_create(scr);

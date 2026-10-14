@@ -5,6 +5,7 @@
 #include <ESPmDNS.h>
 #include <WebServer.h>
 #include <WiFi.h>
+#include <esp_random.h>
 
 namespace net {
 namespace portal {
@@ -16,10 +17,12 @@ enum class State { kIdle, kConnecting, kDiscovering, kChooseWiim, kFailed, kDone
 const IPAddress kApIp(10, 254, 254, 1); // not the default 192.168.4.1, which home VLANs use and AP+STA would clash with
 constexpr uint32_t kConnectTimeoutMs = 20000;
 constexpr uint32_t kIdleRestartMs = 10 * 60 * 1000; // retry the saved network if nobody shows up
+constexpr uint32_t kMaxPortalMs = 15 * 60 * 1000;   // and retry it eventually even if a phone lingers
 
 WebServer server(80);
 DNSServer dns;
 Config config;
+Config original; // what "Keep current Wi-Fi" goes back to after a failed attempt
 State state = State::kIdle;
 uint32_t stateSinceMs = 0;
 uint32_t lastRequestMs = 0;
@@ -178,18 +181,37 @@ void restart() {
 
 void onCancel() { ESP.restart(); }
 
+void noteRequest() { lastRequestMs = millis(); }
+
+// The AP is WPA2 with a fresh password each session, carried in the on-screen QR code: setup
+// still takes one scan, but changing the knob's network needs the knob in hand.
+String makeApPassword() {
+  static const char kChars[] = "abcdefghjkmnpqrstuvwxyz23456789"; // no 0/o/1/l lookalikes
+  String pass;
+  for (int i = 0; i < 8; i++) pass += kChars[esp_random() % (sizeof(kChars) - 1)];
+  return pass;
+}
+
 void setupRoutes() {
-  server.on("/", HTTP_GET, []() { server.send_P(200, "text/html", kPage); });
+  server.on("/", HTTP_GET, []() {
+    noteRequest();
+    server.send_P(200, "text/html", kPage);
+  });
   server.on("/scan", HTTP_GET, []() {
+    noteRequest();
     collectScan();
     if (WiFi.scanComplete() == WIFI_SCAN_FAILED) WiFi.scanNetworks(true);
     server.send(200, "application/json",
                 "{\"current\":\"" + jsonEscape(config.ssid) + "\",\"networks\":" + scanJson + "}");
   });
   server.on("/connect", HTTP_POST, []() {
+    noteRequest();
     if (server.hasArg("ssid")) {
       config.ssid = server.arg("ssid");
       config.password = server.arg("pass");
+    } else {
+      config.ssid = original.ssid;
+      config.password = original.password;
     }
     server.send(200, "text/plain", "ok");
     WiFi.disconnect();
@@ -197,11 +219,13 @@ void setupRoutes() {
     setState(State::kConnecting, ("Joining " + config.ssid + "...").c_str());
   });
   server.on("/state", HTTP_GET, []() {
+    noteRequest();
     String body = "{\"state\":\"" + String(stateName()) + "\"";
     if (state == State::kChooseWiim) body += ",\"wiims\":" + wiimJson;
     server.send(200, "application/json", body + "}");
   });
   server.on("/finish", HTTP_POST, []() {
+    noteRequest();
     config.wiimHost = server.arg("host");
     config.wiimName = server.arg("name");
     save(config);
@@ -210,7 +234,8 @@ void setupRoutes() {
   });
   // Every unknown URL (the phone's captive-portal probes included) lands on the setup page.
   server.onNotFound([]() {
-    server.sendHeader("Location", "http://10.254.254.1/", true);
+    noteRequest();
+    server.sendHeader("Location", "http://" + kApIp.toString() + "/", true);
     server.send(302, "text/plain", "");
   });
 }
@@ -219,18 +244,23 @@ void setupRoutes() {
 
 void run(const Config &current, void (*tick)()) {
   config = current;
+  original = current;
+  String apPassword = makeApPassword();
   WiFi.disconnect(true);
   WiFi.mode(WIFI_AP_STA);
   WiFi.softAPConfig(kApIp, kApIp, IPAddress(255, 255, 255, 0));
-  WiFi.softAP(kApName);
+  WiFi.softAP(kApName, apPassword.c_str());
   WiFi.scanNetworks(true);
   dns.start(53, "*", kApIp);
   setupRoutes();
   server.begin();
 
-  ui::showSetup(kApName, "WIFI:T:nopass;S:WiimKnob-Setup;;", onCancel);
+  String qr = String("WIFI:T:WPA;S:") + kApName + ";P:" + apPassword + ";;";
+  ui::showSetup(kApName, apPassword.c_str(), qr.c_str(), onCancel);
   setState(State::kIdle, "Waiting for your phone...");
-  Serial.printf("[setup] join '%s' and open http://10.254.254.1\n", kApName);
+  Serial.printf("[setup] join '%s' and open http://%s\n", kApName, kApIp.toString().c_str());
+  uint32_t startedMs = millis();
+  lastRequestMs = startedMs;
 
   for (;;) {
     dns.processNextRequest();
@@ -238,7 +268,6 @@ void run(const Config &current, void (*tick)()) {
     tick();
 
     uint32_t now = millis();
-    if (WiFi.softAPgetStationNum() > 0) lastRequestMs = now;
     if (state == State::kConnecting) {
       if (WiFi.status() == WL_CONNECTED) {
         setState(State::kDiscovering, ("Joined " + config.ssid + ". Looking for WiiMs...").c_str());
@@ -251,7 +280,8 @@ void run(const Config &current, void (*tick)()) {
       setState(State::kChooseWiim, "Pick your WiiM on your phone.");
     } else if (state == State::kDone && now - stateSinceMs > 500) {
       restart();
-    } else if (state == State::kIdle && now - lastRequestMs > kIdleRestartMs) {
+    } else if (state != State::kConnecting && state != State::kDiscovering &&
+               (now - lastRequestMs > kIdleRestartMs || now - startedMs > kMaxPortalMs)) {
       ESP.restart();
     }
     delay(5);

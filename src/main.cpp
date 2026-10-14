@@ -286,7 +286,10 @@ void onWifiSetup() {
   ESP.restart();
 }
 
-void setupTick() { display::tick(); }
+void setupTick() {
+  display::tick();
+  power::service(); // the screen times out and the knob sleeps during setup too
+}
 
 const char *signalText(int rssi, char *buf, size_t len) {
   const char *quality = rssi > -60 ? "Excellent" : rssi > -67 ? "Good" : rssi > -75 ? "Fair" : "Weak";
