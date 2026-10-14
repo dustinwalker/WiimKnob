@@ -90,8 +90,8 @@ void flushTask(void *) {
       t.flags = SPI_TRANS_MODE_QIO;
       t.tx_buffer = bounce[i];
       t.length = len * 8;
-      spi_device_queue_trans(pixelDev, &t, portMAX_DELAY);
-      pending[i] = true;
+      // Only marked pending once queued: waitFor() blocks forever on a transaction that never went out.
+      pending[i] = spi_device_queue_trans(pixelDev, &t, portMAX_DELAY) == ESP_OK;
       remaining -= len;
       p += len;
       i ^= 1;
@@ -138,6 +138,7 @@ void begin() {
   ESP_ERROR_CHECK(spi_bus_add_device(SPI2_HOST, &devcfg, &pixelDev));
   for (auto &b : bounce) {
     b = (uint8_t *)heap_caps_malloc(kBounceBytes, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
+    assert(b); // boot-time, before Wi-Fi/TLS take internal RAM; nothing useful runs without them
   }
   jobs = xQueueCreate(1, sizeof(FlushJob));
   xTaskCreatePinnedToCore(flushTask, "lcdflush", 3072, nullptr, configMAX_PRIORITIES - 2, nullptr, 0);
