@@ -211,6 +211,8 @@ void serviceScreenOffTouch() {
   }
 }
 
+bool onExternalPower = false;
+
 // Over-the-air updates: `pio run -e esp32-s3-knob-ota -t upload` sends a new build to
 // wiimknob.local over Wi-Fi. The knob has to be awake (not in deep sleep) to receive it.
 void beginOta() {
@@ -229,7 +231,7 @@ void beginOta() {
   });
   ArduinoOTA.onEnd([]() { Serial.println("[ota] done, rebooting"); });
   ArduinoOTA.onError([](ota_error_t err) {
-    WiFi.setSleep(true);
+    WiFi.setSleep(!onExternalPower);
     Serial.printf("[ota] error %u\n", err);
   });
   ArduinoOTA.begin();
@@ -356,7 +358,6 @@ void serviceKnob() {
 
 // On USB power, trade battery-saving for responsiveness: stay awake, keep the radio out of
 // modem sleep (which adds 100-400ms of latency to every WiiM request), and poll faster.
-bool onExternalPower = false;
 constexpr uint32_t kExternalStatusPollMs = 500;
 
 void applyPowerSource(bool external) {
