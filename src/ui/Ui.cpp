@@ -47,6 +47,10 @@ lv_obj_t *frontImg = nullptr; // over them: the plain art, faded in as the contr
 const lv_img_dsc_t *plainArt = nullptr;
 const lv_img_dsc_t *tintedArt = nullptr; // backdrop while the controls are up
 lv_obj_t *controlsLayer = nullptr;
+lv_obj_t *progressArc = nullptr;
+long progressBaseMs = 0, progressDurationMs = 0;
+uint32_t progressBaseTick = 0;
+bool progressPlaying = false;
 lv_obj_t *tickerPill = nullptr; // "title · artist" left over the art while the controls are hidden
 lv_obj_t *tickerLabel = nullptr;
 bool controlsShown = true;
@@ -147,8 +151,23 @@ void applyArt() {
 
 void frontImgOpaCb(void *img, int32_t v) { lv_obj_set_style_img_opa((lv_obj_t *)img, v, 0); }
 
+void updateProgressArc() {
+  if (progressDurationMs <= 0) return;
+  long pos = progressBaseMs + (progressPlaying ? (long)lv_tick_elaps(progressBaseTick) : 0);
+  if (pos > progressDurationMs) pos = progressDurationMs;
+  lv_arc_set_value(progressArc, (int)(pos * 1000 / progressDurationMs));
+}
+
+void progressTimerCb(lv_timer_t *) {
+  if (!lv_obj_has_flag(progressArc, LV_OBJ_FLAG_HIDDEN)) updateProgressArc();
+}
+
 void onControlsFadedOut(lv_anim_t *) {
   lv_obj_add_flag(controlsLayer, LV_OBJ_FLAG_HIDDEN);
+  if (progressDurationMs > 0) {
+    updateProgressArc();
+    lv_obj_clear_flag(progressArc, LV_OBJ_FLAG_HIDDEN);
+  }
   if (lv_label_get_text(tickerLabel)[0]) lv_obj_clear_flag(tickerPill, LV_OBJ_FLAG_HIDDEN);
 }
 
@@ -160,6 +179,7 @@ void setControlsShown(bool shown) {
   lv_anim_del(frontImg, frontImgOpaCb);
   if (shown) {
     lv_obj_add_flag(tickerPill, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(progressArc, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(frontImg, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(controlsLayer, LV_OBJ_FLAG_HIDDEN);
     return;
@@ -447,6 +467,24 @@ void begin(const Callbacks &cbs) {
   frontImg = lv_img_create(np);
   lv_obj_center(frontImg);
   lv_obj_add_flag(frontImg, LV_OBJ_FLAG_HIDDEN);
+
+  progressArc = lv_arc_create(np);
+  lv_obj_set_size(progressArc, 356, 356);
+  lv_obj_center(progressArc);
+  lv_arc_set_bg_angles(progressArc, 0, 360);
+  lv_arc_set_rotation(progressArc, 270);
+  lv_arc_set_range(progressArc, 0, 1000);
+  lv_obj_remove_style(progressArc, NULL, LV_PART_KNOB);
+  lv_obj_clear_flag(progressArc, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_set_style_arc_width(progressArc, 4, LV_PART_MAIN);
+  lv_obj_set_style_arc_width(progressArc, 4, LV_PART_INDICATOR);
+  lv_obj_set_style_arc_color(progressArc, lv_color_black(), LV_PART_MAIN);
+  lv_obj_set_style_arc_opa(progressArc, LV_OPA_40, LV_PART_MAIN);
+  lv_obj_set_style_arc_color(progressArc, lv_color_white(), LV_PART_INDICATOR);
+  lv_obj_set_style_arc_opa(progressArc, LV_OPA_80, LV_PART_INDICATOR);
+  lv_obj_set_style_bg_opa(progressArc, LV_OPA_TRANSP, 0);
+  lv_obj_add_flag(progressArc, LV_OBJ_FLAG_HIDDEN);
+  lv_timer_create(progressTimerCb, 1000, NULL);
 
   tickerPill = lv_obj_create(np);
   lv_obj_set_size(tickerPill, 240, 34);
@@ -931,6 +969,19 @@ void setPlaying(bool playing) {
   if (last == (int)playing) return;
   last = playing;
   lv_label_set_text(playPauseIcon, playing ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY);
+}
+
+void setProgress(long positionMs, long durationMs, bool playing) {
+  if (positionMs == progressBaseMs && durationMs == progressDurationMs && playing == progressPlaying) return;
+  progressBaseMs = positionMs;
+  progressDurationMs = durationMs;
+  progressPlaying = playing;
+  progressBaseTick = lv_tick_get();
+  if (durationMs <= 0) {
+    lv_obj_add_flag(progressArc, LV_OBJ_FLAG_HIDDEN);
+  } else if (!controlsShown) {
+    lv_obj_clear_flag(progressArc, LV_OBJ_FLAG_HIDDEN);
+  }
 }
 
 void setConnected(bool connected) {

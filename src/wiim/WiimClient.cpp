@@ -75,6 +75,7 @@ bool WiimClient::fetchStatus(PlayerState &state) {
   state.queueCount = doc["plicount"].as<int>();
   state.mode = doc["mode"].as<int>();
   state.positionMs = doc["curpos"].as<long>();
+  state.durationMs = doc["totlen"].as<long>();
   return true;
 }
 

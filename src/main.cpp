@@ -299,6 +299,7 @@ void syncUiFromWiimTask() {
 
   wiim::PlayerState state = wiim::task::getPlayerState();
   ui::setPlaying(state.status == "play");
+  ui::setProgress(state.positionMs, state.durationMs, state.status == "play");
 
   // Don't fight the knob: if the user just turned it, our optimistic local value is more
   // current than whatever the device reports until it catches up.

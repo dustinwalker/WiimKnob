@@ -15,6 +15,7 @@ struct PlayerState {
   int mode = 0;       // playback source: 10 = WiiM app queue, 31 Spotify Connect, 36 Qobuz
                       // Connect, 1 AirPlay, 40+ physical inputs (line-in, optical, ...)
   long positionMs = 0;
+  long durationMs = 0; // 0 when the source doesn't report one (radio, line-in)
 };
 
 struct TrackMetadata {

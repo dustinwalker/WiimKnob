@@ -47,6 +47,8 @@ void setVolume(int volume0to100);
 void showControls();
 void setControlsTimeout(uint32_t seconds);
 void setPlaying(bool playing);
+// Thin ring around the edge while only the art is showing. Interpolates between reports.
+void setProgress(long positionMs, long durationMs, bool playing);
 void setConnected(bool connected); // small dot at the top of the controls
 
 // Battery-shaped icon with a proportional, color-coded fill; tap toggles it to a plain
