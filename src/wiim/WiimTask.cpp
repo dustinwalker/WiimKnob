@@ -242,6 +242,11 @@ void bgTaskFn(void *) {
 
   uint32_t lastMetaMs = 0;
   uint32_t lastPresetsMs = 0;
+  // After a skip the WiiM takes a moment to switch tracks, so the first re-read usually still
+  // sees the old one. Re-read quickly until the track changes, rather than waiting a full poll.
+  constexpr uint32_t kSkipFollowMs = 6000, kSkipPollMs = 500;
+  uint32_t followUntilMs = 0;
+  uint32_t followFromVersion = 0;
   bool forcePresets = true;
   bool forceMeta = true;
 
@@ -250,11 +255,15 @@ void bgTaskFn(void *) {
     if (metaRefreshRequested) {
       metaRefreshRequested = false;
       forceMeta = true;
+      followUntilMs = now + kSkipFollowMs;
+      followFromVersion = metadataVersion();
     }
-    if (forceMeta || now - lastMetaMs >= POLL_METADATA_MS) {
+    bool following = (int32_t)(followUntilMs - now) > 0;
+    if (forceMeta || now - lastMetaMs >= (following ? kSkipPollMs : POLL_METADATA_MS)) {
       refreshMetadata();
       lastMetaMs = now;
       forceMeta = false;
+      if (following && metadataVersion() != followFromVersion) followUntilMs = now;
     }
     uint32_t presetInterval = havePresets ? kPresetRefreshMs : kPresetRetryMs;
     if (forcePresets || now - lastPresetsMs >= presetInterval) {
