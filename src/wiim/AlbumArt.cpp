@@ -4,6 +4,7 @@
 #include <JPEGDEC.h>
 #include <WiFiClientSecure.h>
 #include <esp_heap_caps.h>
+#include <new>
 
 namespace wiim {
 namespace albumart {
@@ -38,7 +39,9 @@ String lastUrl;
 uint16_t *tintedBuf = nullptr;
 lv_img_dsc_t tintedDesc = {};
 
-JPEGDEC jpeg;
+// ~18KB of decoder state, so it lives in PSRAM rather than taking internal RAM from the TLS
+// connections. Created on first use.
+JPEGDEC *jpeg = nullptr;
 
 // Set just before decode() and read from the (synchronous, single-threaded) draw callback.
 uint16_t *decodeTarget = nullptr;
@@ -262,12 +265,17 @@ bool fetch(const String &url) {
     return false;
   }
 
-  if (jpeg.openRAM(rawBuf, rawLen, drawCallback) != 1) {
+  if (!jpeg) {
+    void *mem = heap_caps_malloc(sizeof(JPEGDEC), MALLOC_CAP_SPIRAM);
+    if (!mem) return false;
+    jpeg = new (mem) JPEGDEC();
+  }
+  if (jpeg->openRAM(rawBuf, rawLen, drawCallback) != 1) {
     return false;
   }
 
-  int srcW = jpeg.getWidth();
-  int srcH = jpeg.getHeight();
+  int srcW = jpeg->getWidth();
+  int srcH = jpeg->getHeight();
 
   // Biggest power-of-two JPEG downscale that still leaves the shorter side at least
   // kWorkingSize, so the box filter below finishes the job without ever upscaling.
@@ -290,7 +298,7 @@ bool fetch(const String &url) {
   size_t neededBytes = (size_t)outW * outH * 2;
 
   if (!ensurePixelCap(neededBytes)) {
-    jpeg.close();
+    jpeg->close();
     return false;
   }
 
@@ -298,9 +306,9 @@ bool fetch(const String &url) {
   decodeTargetW = outW;
   decodeTargetH = outH;
 
-  jpeg.setPixelType(RGB565_BIG_ENDIAN); // LV_COLOR_16_SWAP
-  bool ok = jpeg.decode(0, 0, scaleFlag) == 1;
-  jpeg.close();
+  jpeg->setPixelType(RGB565_BIG_ENDIAN); // LV_COLOR_16_SWAP
+  bool ok = jpeg->decode(0, 0, scaleFlag) == 1;
+  jpeg->close();
   decodeTarget = nullptr;
 
   if (!ok) {
