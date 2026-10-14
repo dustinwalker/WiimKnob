@@ -51,6 +51,8 @@ lv_obj_t *progressArc = nullptr;
 long progressBaseMs = 0, progressDurationMs = 0;
 uint32_t progressBaseTick = 0;
 bool progressPlaying = false;
+lv_obj_t *skipFlash = nullptr; // big prev/next icon after a swipe on the art
+lv_obj_t *skipFlashIcon = nullptr;
 lv_obj_t *tickerPill = nullptr; // "title · artist" left over the art while the controls are hidden
 lv_obj_t *tickerLabel = nullptr;
 bool controlsShown = true;
@@ -221,6 +223,18 @@ void onGesture(lv_event_t *e) {
     return;
   }
   lv_dir_t dir = lv_indev_get_gesture_dir(indev);
+  // With only the art showing, swipes skip tracks; tap first to bring up the controls and page.
+  if (activeScreen == kNowPlaying && !controlsShown && (dir == LV_DIR_LEFT || dir == LV_DIR_RIGHT)) {
+    bool next = dir == LV_DIR_LEFT;
+    lv_label_set_text(skipFlashIcon, next ? LV_SYMBOL_NEXT : LV_SYMBOL_PREV);
+    lv_anim_del(skipFlash, NULL);
+    lv_obj_set_style_opa(skipFlash, LV_OPA_COVER, 0);
+    lv_obj_clear_flag(skipFlash, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_fade_out(skipFlash, 300, 400);
+    if (next && callbacks.onNext) callbacks.onNext();
+    if (!next && callbacks.onPrev) callbacks.onPrev();
+    return;
+  }
   if (dir == LV_DIR_LEFT) {
     goToScreen(activeScreen + 1, true);
   } else if (dir == LV_DIR_RIGHT) {
@@ -485,6 +499,21 @@ void begin(const Callbacks &cbs) {
   lv_obj_set_style_bg_opa(progressArc, LV_OPA_TRANSP, 0);
   lv_obj_add_flag(progressArc, LV_OBJ_FLAG_HIDDEN);
   lv_timer_create(progressTimerCb, 1000, NULL);
+
+  skipFlash = lv_obj_create(np);
+  lv_obj_set_size(skipFlash, 96, 96);
+  lv_obj_set_style_radius(skipFlash, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_bg_color(skipFlash, lv_color_black(), 0);
+  lv_obj_set_style_bg_opa(skipFlash, LV_OPA_60, 0);
+  lv_obj_set_style_border_width(skipFlash, 0, 0);
+  lv_obj_center(skipFlash);
+  lv_obj_clear_flag(skipFlash, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_clear_flag(skipFlash, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_flag(skipFlash, LV_OBJ_FLAG_HIDDEN);
+  skipFlashIcon = lv_label_create(skipFlash);
+  lv_obj_set_style_text_font(skipFlashIcon, &lv_font_media_icons_36, 0);
+  lv_obj_set_style_text_color(skipFlashIcon, lv_color_white(), 0);
+  lv_obj_center(skipFlashIcon);
 
   tickerPill = lv_obj_create(np);
   lv_obj_set_size(tickerPill, 240, 34);
