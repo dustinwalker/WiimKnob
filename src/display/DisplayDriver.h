@@ -18,5 +18,7 @@ void refreshNow();
 void setBacklightOn(bool on);
 // 1-100, applied now if the backlight is on and remembered for when it next turns on.
 void setBrightness(uint8_t percent);
+// A quarter of the set brightness, for the warning before the screen turns off.
+void setDimmed(bool dimmed);
 
 } // namespace display

@@ -16,6 +16,8 @@ bool screenOn = true;
 uint32_t screenTimeoutMs = (uint32_t)SCREEN_TIMEOUT_S * 1000;
 uint32_t sleepTimeoutMs = (uint32_t)DEEP_SLEEP_TIMEOUT_MIN * 60000UL;
 bool externalPower = false;
+bool dimmed = false;
+constexpr uint32_t kDimLeadMs = 15000; // how long before screen-off the backlight dims
 
 void enterDeepSleep(const char *reason) {
   display::setBacklightOn(false);
@@ -55,6 +57,10 @@ void begin() { lastActivityMs = millis(); }
 
 void noteActivity() {
   lastActivityMs = millis();
+  if (dimmed) {
+    display::setDimmed(false);
+    dimmed = false;
+  }
   if (!screenOn) {
     display::setBacklightOn(true);
     screenOn = true;
@@ -62,8 +68,15 @@ void noteActivity() {
 }
 
 void service() {
-  if (externalPower) return;
   uint32_t idleMs = millis() - lastActivityMs;
+  // On USB power the screen stays on, dimmed, where it would otherwise turn off.
+  uint32_t dimAtMs = externalPower ? screenTimeoutMs
+                                   : (screenTimeoutMs > kDimLeadMs * 2 ? screenTimeoutMs - kDimLeadMs : screenTimeoutMs / 2);
+  if (screenOn && !dimmed && idleMs > dimAtMs) {
+    display::setDimmed(true);
+    dimmed = true;
+  }
+  if (externalPower) return;
 
   if (screenOn && idleMs > screenTimeoutMs) {
     display::setBacklightOn(false);

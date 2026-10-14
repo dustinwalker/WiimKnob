@@ -20,8 +20,8 @@ void service();
 void setScreenTimeout(uint32_t seconds);
 void setSleepTimeout(uint32_t minutes);
 
-// On USB power the screen and board stay awake; the timeouts resume from the moment it's
-// unplugged.
+// On USB power the board stays awake and the screen dims instead of turning off; the timeouts
+// resume from the moment it's unplugged.
 void setExternalPower(bool on);
 
 // Whether the backlight is currently on. Useful for callers that want to skip work that only

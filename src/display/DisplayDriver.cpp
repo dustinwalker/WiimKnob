@@ -25,6 +25,7 @@ constexpr int kBufRows = 60;
 constexpr uint32_t kBacklightPwmHz = 20000; // above hearing, and too fast to see flicker
 uint8_t brightnessPercent = 100;
 bool backlightOn = false;
+bool backlightDimmed = false;
 
 // Pixels go out on our own SPI device from a task on the other core, so LVGL renders the next
 // band while this one transfers. Arduino_GFX's own path sends 2KB at a time and waits on each,
@@ -167,7 +168,13 @@ void setBacklightOn(bool on) {
   // Squared so the low end of the percentage range gets most of the duty steps, roughly
   // matching how the eye perceives brightness.
   uint32_t duty = (uint32_t)brightnessPercent * brightnessPercent * 255 / 10000;
+  if (backlightDimmed) duty /= 4;
   ledcWrite(PIN_LCD_BACKLIGHT, on ? max<uint32_t>(duty, 2) : 0);
+}
+
+void setDimmed(bool dimmed) {
+  backlightDimmed = dimmed;
+  if (backlightOn) setBacklightOn(true);
 }
 
 void setBrightness(uint8_t percent) {
