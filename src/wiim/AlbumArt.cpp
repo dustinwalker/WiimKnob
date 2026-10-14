@@ -30,14 +30,22 @@ size_t smallCap = 0; // bytes
 // turns.
 constexpr int kWorkingSize = 360;
 
-lv_img_dsc_t desc = {};
 String lastUrl;
 
-// Backdrop shown behind the on-screen controls: the art center-cropped to the screen with a
-// dark gradient in its own dominant color baked in. Built once per track, so showing the
-// controls costs a plain 1:1 image draw instead of blending a translucent layer every frame.
-uint16_t *tintedBuf = nullptr;
-lv_img_dsc_t tintedDesc = {};
+// What LVGL draws, double-buffered: each fetch fills the set not on screen and then switches
+// to it, so core 1 never draws from memory core 0 is decoding or tinting into.
+struct ShownArt {
+  uint16_t *pixels = nullptr;
+  size_t cap = 0; // bytes
+  lv_img_dsc_t desc = {};
+  // Backdrop shown behind the on-screen controls: the art center-cropped to the screen with a
+  // dark gradient in its own dominant color baked in. Built once per track, so showing the
+  // controls costs a plain 1:1 image draw instead of blending a translucent layer every frame.
+  uint16_t *tinted = nullptr;
+  lv_img_dsc_t tintedDesc = {};
+};
+ShownArt shown[2];
+volatile int current = -1;
 
 // ~18KB of decoder state, so it lives in PSRAM rather than taking internal RAM from the TLS
 // connections. Created on first use.
@@ -163,17 +171,20 @@ void dominantColor(const uint16_t *src, int stride, int side, uint8_t &r, uint8_
   b = bs / ws;
 }
 
-void makeTinted() {
+void makeTinted(ShownArt &art) {
+  const lv_img_dsc_t &desc = art.desc;
+  lv_img_dsc_t &tintedDesc = art.tintedDesc;
   int w = desc.header.w, h = desc.header.h;
   int side = min(w, h);
+  tintedDesc.data = nullptr;
   if (side < kWorkingSize) {
-    tintedDesc.data = nullptr;
     return;
   }
-  if (!tintedBuf) {
-    tintedBuf = (uint16_t *)heap_caps_malloc((size_t)kWorkingSize * kWorkingSize * 2, MALLOC_CAP_SPIRAM);
-    if (!tintedBuf) return;
+  if (!art.tinted) {
+    art.tinted = (uint16_t *)heap_caps_malloc((size_t)kWorkingSize * kWorkingSize * 2, MALLOC_CAP_SPIRAM);
+    if (!art.tinted) return;
   }
+  uint16_t *tintedBuf = art.tinted;
   const uint16_t *src = (const uint16_t *)desc.data;
   const uint16_t *crop = &src[((h - kWorkingSize) / 2) * w + (w - kWorkingSize) / 2];
 
@@ -215,7 +226,7 @@ bool fetch(const String &url) {
   if (url.length() == 0) {
     return false;
   }
-  if (url == lastUrl && desc.data != nullptr) {
+  if (url == lastUrl && current >= 0) {
     return true; // already showing this image
   }
 
@@ -336,29 +347,43 @@ bool fetch(const String &url) {
     // quality on a very low-memory day, not a missing image.
   }
 
-  desc.header.always_zero = 0;
-  desc.header.w = finalW;
-  desc.header.h = finalH;
-  desc.header.cf = LV_IMG_CF_TRUE_COLOR;
-  desc.data_size = (size_t)finalW * finalH * 2;
-  desc.data = (const uint8_t *)finalBuf;
-
-  makeTinted();
+  ShownArt &art = shown[current == 0 ? 1 : 0];
+  size_t finalBytes = (size_t)finalW * finalH * 2;
+  if (finalBytes > art.cap) {
+    heap_caps_free(art.pixels); // safe: this set isn't the one on screen
+    art.pixels = (uint16_t *)heap_caps_malloc(finalBytes, MALLOC_CAP_SPIRAM);
+    art.cap = art.pixels ? finalBytes : 0;
+    if (!art.pixels) return false;
+  }
+  memcpy(art.pixels, finalBuf, finalBytes);
+  art.desc.header.always_zero = 0;
+  art.desc.header.w = finalW;
+  art.desc.header.h = finalH;
+  art.desc.header.cf = LV_IMG_CF_TRUE_COLOR;
+  art.desc.data_size = finalBytes;
+  art.desc.data = (const uint8_t *)art.pixels;
+  makeTinted(art);
+  current = &art - shown;
 
   lastUrl = url;
   return true;
 }
 
-const lv_img_dsc_t *descriptor() { return desc.data ? &desc : nullptr; }
+const lv_img_dsc_t *descriptor() { return current < 0 ? nullptr : &shown[current].desc; }
 
-const lv_img_dsc_t *tintedDescriptor() { return tintedDesc.data ? &tintedDesc : nullptr; }
+const lv_img_dsc_t *tintedDescriptor() {
+  if (current < 0) return nullptr;
+  const lv_img_dsc_t &t = shown[current].tintedDesc;
+  return t.data ? &t : nullptr;
+}
 
 const String &currentUrl() { return lastUrl; }
 
 bool makeThumbnail(uint16_t *dst, int size) {
-  if (!desc.data) {
+  if (current < 0) {
     return false;
   }
+  const lv_img_dsc_t &desc = shown[current].desc;
   // Center square crop, so non-square covers fill the tile the same way the art inset does.
   int w = desc.header.w, h = desc.header.h;
   int side = min(w, h);
