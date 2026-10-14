@@ -419,8 +419,8 @@ void setup() {
 void loop() {
   static bool screenWasOn = true;
   bool screenOn = power::isScreenOn();
-  if (screenOn && !screenWasOn) {
-    ui::showControls();
+  if (!screenOn && screenWasOn) {
+    ui::hideControlsNow(); // a touch wakes to the art; a knob turn brings the controls itself
   }
   screenWasOn = screenOn;
   if (power::isScreenOn()) {

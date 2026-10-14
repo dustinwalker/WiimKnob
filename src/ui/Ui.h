@@ -45,6 +45,8 @@ void setVolume(int volume0to100);
 // Brings the controls up over the art and restarts their hide timer. For knob turns and wakes,
 // which LVGL doesn't see as input.
 void showControls();
+// Puts the controls away without the fade, so a touch that wakes the screen shows only the art.
+void hideControlsNow();
 void setControlsTimeout(uint32_t seconds);
 void setPlaying(bool playing);
 // Thin ring around the edge while only the art is showing. Interpolates between reports.

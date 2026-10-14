@@ -955,6 +955,14 @@ void setVolume(int volume0to100) {
   lv_label_set_text_fmt(volumeLabel, "%d", volume0to100);
 }
 
+void hideControlsNow() {
+  setControlsShown(false);
+  if (controlsShown) return; // no art, so the controls stay
+  lv_anim_del(frontImg, frontImgOpaCb);
+  lv_obj_set_style_img_opa(frontImg, LV_OPA_COVER, 0);
+  onControlsFadedOut(nullptr);
+}
+
 void setControlsTimeout(uint32_t seconds) { controlsTimeoutMs = seconds * 1000; }
 
 void showControls() {
