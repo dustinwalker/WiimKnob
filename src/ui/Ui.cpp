@@ -169,7 +169,7 @@ void updateProgressArc() {
   if (progressDurationMs <= 0) return;
   long pos = progressBaseMs + (progressPlaying ? (long)lv_tick_elaps(progressBaseTick) : 0);
   if (pos > progressDurationMs) pos = progressDurationMs;
-  lv_arc_set_value(progressArc, (int)(pos * 1000 / progressDurationMs));
+  lv_arc_set_value(progressArc, (int)((int64_t)pos * 1000 / progressDurationMs)); // 32-bit overflows past ~35 min
 }
 
 void progressTimerCb(lv_timer_t *) {
