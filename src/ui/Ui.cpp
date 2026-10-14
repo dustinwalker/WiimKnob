@@ -855,6 +855,15 @@ void hideControlsNow() {
   onControlsFadedOut(nullptr);
 }
 
+void setBootStatus(const char *text) {
+  if (!plainArt) {
+    lv_label_set_text(titleLabel, text);
+    return;
+  }
+  lv_label_set_text(tickerLabel, text);
+  if (!controlsShown) lv_obj_clear_flag(tickerPill, LV_OBJ_FLAG_HIDDEN);
+}
+
 void setControlsTimeout(uint32_t seconds) { controlsTimeoutMs = seconds * 1000; }
 
 void showControls() {

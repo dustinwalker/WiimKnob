@@ -25,6 +25,11 @@ const lv_img_dsc_t *tintedDescriptor();
 // URL of the image descriptor() currently holds (empty if none).
 const String &currentUrl();
 
+// The current cover, center-cropped to 360x360, saved to flash just before deep sleep and shown
+// (dimmed) while the knob reconnects after waking. One write per sleep.
+void saveBootArt();
+const lv_img_dsc_t *loadBootArt(); // nullptr if nothing has been saved
+
 // Box-filters a center square crop of the current image down to size x size RGB565 into dst.
 // Returns false if there's no image yet. Call from the same task as fetch().
 bool makeThumbnail(uint16_t *dst, int size);

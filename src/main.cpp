@@ -15,6 +15,7 @@
 #include "power/Power.h"
 #include "settings/Settings.h"
 #include "ui/Ui.h"
+#include "wiim/AlbumArt.h"
 #include "wiim/WiimTask.h"
 
 
@@ -273,6 +274,8 @@ bool connectWiFi(uint32_t timeoutMs) {
   WiFi.mode(WIFI_STA);
   WiFi.begin(netConfig.ssid.c_str(), netConfig.password.c_str());
   Serial.printf("Connecting to Wi-Fi '%s'...\n", netConfig.ssid.c_str());
+  ui::setBootStatus("Connecting to Wi-Fi...");
+  display::tick();
   uint32_t started = millis();
   while (WiFi.status() != WL_CONNECTED) {
     if (millis() - started > timeoutMs) {
@@ -283,6 +286,7 @@ bool connectWiFi(uint32_t timeoutMs) {
     delay(50);
   }
   Serial.printf("\nConnected, IP: %s\n", WiFi.localIP().toString().c_str());
+  ui::setBootStatus("Finding your WiiM...");
   return true;
 }
 
@@ -330,9 +334,8 @@ void syncUiFromWiimTask() {
     ui::setVolume(localVolume);
   }
 
-  ui::setArtPending(wiim::task::isArtPending());
-
   uint32_t version = wiim::task::metadataVersion();
+  if (version) ui::setArtPending(wiim::task::isArtPending()); // until then, keep the boot cover dimmed
   if (version != lastSeenMetaVersion) {
     lastSeenMetaVersion = version;
     wiim::TrackMetadata meta = wiim::task::getMetadata();
@@ -453,6 +456,13 @@ void setup() {
   haptics::begin(); // after touch.begin(), which brings up the I2C bus haptics shares
   input::knob::begin();
   power::begin();
+  power::setBeforeSleep(wiim::albumart::saveBootArt);
+  if (const lv_img_dsc_t *bootArt = wiim::albumart::loadBootArt()) {
+    // Last session's cover, dimmed, while reconnecting -- the real art replaces it.
+    ui::setAlbumArt(bootArt, nullptr);
+    ui::hideControlsNow();
+    ui::setArtPending(true);
+  }
   power::setScreenCallback(onScreenChange);
   power::battery::begin();
 

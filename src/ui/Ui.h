@@ -47,6 +47,9 @@ void setVolume(int volume0to100);
 void showControls();
 // Puts the controls away without the fade, so a touch that wakes the screen shows only the art.
 void hideControlsNow();
+// While connecting at boot: the line over the art (or the title, with no art yet). The first
+// real track replaces it.
+void setBootStatus(const char *text);
 void setControlsTimeout(uint32_t seconds);
 void setPlaying(bool playing);
 // Thin ring around the edge while only the art is showing. Interpolates between reports.

@@ -2,6 +2,7 @@
 
 #include <HTTPClient.h>
 #include <JPEGDEC.h>
+#include <LittleFS.h>
 #include <WiFiClientSecure.h>
 #include <esp_heap_caps.h>
 #include <new>
@@ -425,6 +426,43 @@ bool makeThumbnail(uint16_t *dst, int size) {
   const uint16_t *crop = &src[((h - side) / 2) * w + (w - side) / 2];
   boxDownscale(crop, w, side, side, dst, size, size);
   return true;
+}
+
+namespace {
+constexpr const char *kBootArtPath = "/boot_art.raw";
+constexpr size_t kBootArtBytes = (size_t)kWorkingSize * kWorkingSize * 2;
+uint16_t *bootArt = nullptr;
+lv_img_dsc_t bootDesc = {};
+} // namespace
+
+void saveBootArt() {
+  if (current < 0 || !LittleFS.begin(true)) return;
+  const lv_img_dsc_t &desc = shown[current].desc;
+  int w = desc.header.w, h = desc.header.h;
+  if (min(w, h) < kWorkingSize) return;
+  File f = LittleFS.open(kBootArtPath, "w");
+  if (!f) return;
+  const uint16_t *src = (const uint16_t *)desc.data;
+  const uint16_t *crop = &src[((h - kWorkingSize) / 2) * w + (w - kWorkingSize) / 2];
+  for (int y = 0; y < kWorkingSize; y++) f.write((const uint8_t *)&crop[y * w], kWorkingSize * 2);
+  f.close();
+}
+
+const lv_img_dsc_t *loadBootArt() {
+  if (!LittleFS.begin(true)) return nullptr;
+  File f = LittleFS.open(kBootArtPath, "r");
+  if (!f) return nullptr;
+  if (!bootArt) bootArt = (uint16_t *)heap_caps_malloc(kBootArtBytes, MALLOC_CAP_SPIRAM);
+  bool ok = bootArt && f.read((uint8_t *)bootArt, kBootArtBytes) == kBootArtBytes;
+  f.close();
+  if (!ok) return nullptr;
+  bootDesc.header.always_zero = 0;
+  bootDesc.header.w = kWorkingSize;
+  bootDesc.header.h = kWorkingSize;
+  bootDesc.header.cf = LV_IMG_CF_TRUE_COLOR;
+  bootDesc.data_size = kBootArtBytes;
+  bootDesc.data = (const uint8_t *)bootArt;
+  return &bootDesc;
 }
 
 } // namespace albumart

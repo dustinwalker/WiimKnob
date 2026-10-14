@@ -17,6 +17,9 @@ const BootInfo &lastBoot();
 // Deep sleep right away (e.g. on a low battery). Never returns.
 void sleepNow(const char *reason);
 
+// Runs just before deep sleep, after the backlight is off (e.g. to save state to flash).
+void setBeforeSleep(void (*cb)());
+
 // Starts the inactivity clock. Call once from setup(), after display::begin().
 void begin();
 

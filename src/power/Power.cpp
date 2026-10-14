@@ -20,6 +20,7 @@ uint32_t sleepTimeoutMs = (uint32_t)DEEP_SLEEP_TIMEOUT_MIN * 60000UL;
 bool externalPower = false;
 bool dimmed = false;
 void (*screenCallback)(bool on) = nullptr;
+void (*beforeSleep)() = nullptr;
 constexpr uint32_t kDimLeadMs = 15000; // how long before screen-off the backlight dims
 
 // Survive deep sleep (RTC slow memory), but not a power loss: after a flat battery they read 0,
@@ -70,6 +71,7 @@ void enterDeepSleep(const char *reason) {
   uint64_t wakePins = (1ULL << PIN_KNOB_CW) | (1ULL << PIN_KNOB_CCW) | (1ULL << PIN_TOUCH_INT);
   esp_sleep_enable_ext1_wakeup(wakePins, ESP_EXT1_WAKEUP_ANY_LOW);
 
+  if (beforeSleep) beforeSleep();
   rtcSleepVolts = battery::lastRawVoltage();
   rtcSleepAtS = nowSeconds();
   strlcpy(rtcSleepReason, reason, sizeof(rtcSleepReason));
@@ -108,6 +110,8 @@ void begin() {
 const BootInfo &lastBoot() { return bootInfo; }
 
 void sleepNow(const char *reason) { enterDeepSleep(reason); }
+
+void setBeforeSleep(void (*cb)()) { beforeSleep = cb; }
 
 void noteActivity() {
   lastActivityMs = millis();
