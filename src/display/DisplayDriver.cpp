@@ -5,6 +5,7 @@
 #include <Arduino_GFX_Library.h>
 #include <driver/spi_master.h>
 #include <esp_heap_caps.h>
+#include <esp_timer.h>
 
 namespace display {
 
@@ -164,23 +165,63 @@ void tick() { lv_timer_handler(); }
 
 void refreshNow() { lv_refr_now(NULL); }
 
+namespace {
+
+// Fades step a perceptual level (0-1000, duty = level^2) on a 10ms timer, so they look even to
+// the eye; a linear duty ramp rushes through the dark end. The S3's LEDC has no gamma fade.
+esp_timer_handle_t fadeTimer = nullptr;
+volatile int fadeLevel = 0, fadeFrom = 0, fadeTo = 0;
+volatile uint32_t fadeStartUs = 0, fadeDurationUs = 0;
+
+void writeLevel(int level) { ledcWrite(PIN_LCD_BACKLIGHT, (uint32_t)level * level * 255 / 1000000); }
+
+void fadeStep(void *) {
+  uint32_t elapsed = (uint32_t)esp_timer_get_time() - fadeStartUs;
+  if (elapsed >= fadeDurationUs) {
+    fadeLevel = fadeTo;
+    esp_timer_stop(fadeTimer);
+  } else {
+    fadeLevel = fadeFrom + (int)((int64_t)(fadeTo - fadeFrom) * elapsed / fadeDurationUs);
+  }
+  writeLevel(fadeLevel);
+}
+
+void applyBacklight(int fadeMs) {
+  int target = 0;
+  if (backlightOn) {
+    target = brightnessPercent * 10;
+    if (backlightDimmed) target /= 2; // a quarter of the duty
+    target = max(target, 90);         // the lowest level that still lights the panel
+  }
+  if (!fadeTimer) {
+    esp_timer_create_args_t args = {};
+    args.callback = fadeStep;
+    args.name = "backlight";
+    esp_timer_create(&args, &fadeTimer);
+  }
+  esp_timer_stop(fadeTimer);
+  fadeFrom = fadeLevel; // from wherever it is now, so an interrupted fade doesn't jump
+  fadeTo = target;
+  fadeStartUs = (uint32_t)esp_timer_get_time();
+  fadeDurationUs = (uint32_t)fadeMs * 1000;
+  esp_timer_start_periodic(fadeTimer, 10000);
+}
+
+} // namespace
+
 void setBacklightOn(bool on) {
   backlightOn = on;
-  // Squared so the low end of the percentage range gets most of the duty steps, roughly
-  // matching how the eye perceives brightness.
-  uint32_t duty = (uint32_t)brightnessPercent * brightnessPercent * 255 / 10000;
-  if (backlightDimmed) duty /= 4;
-  ledcWrite(PIN_LCD_BACKLIGHT, on ? max<uint32_t>(duty, 2) : 0);
+  applyBacklight(on ? 250 : 400);
 }
 
 void setDimmed(bool dimmed) {
   backlightDimmed = dimmed;
-  if (backlightOn) setBacklightOn(true);
+  if (backlightOn) applyBacklight(dimmed ? 600 : 200);
 }
 
 void setBrightness(uint8_t percent) {
   brightnessPercent = constrain(percent, 1, 100);
-  if (backlightOn) setBacklightOn(true);
+  if (backlightOn) applyBacklight(80);
 }
 
 } // namespace display
