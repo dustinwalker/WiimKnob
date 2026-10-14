@@ -34,12 +34,17 @@ uint32_t lastBatteryPollMs = 0;
 
 void touchReadCb(lv_indev_drv_t *drv, lv_indev_data_t *data) {
   (void)drv;
+  static bool down = false;
+  static bool swallowing = false; // a touch that started on a dimmed screen only undims it
   int16_t x, y;
-  if (touch.read(x, y)) {
+  bool pressed = touch.read(x, y);
+  if (pressed && !down) swallowing = power::isDimmed();
+  down = pressed;
+  if (pressed) power::noteActivity();
+  if (pressed && !swallowing) {
     data->point.x = x;
     data->point.y = y;
     data->state = LV_INDEV_STATE_PR;
-    power::noteActivity();
   } else {
     data->state = LV_INDEV_STATE_REL;
   }

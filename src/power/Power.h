@@ -28,5 +28,6 @@ void setExternalPower(bool on);
 // matters while something is actually visible (see main.cpp's loop(), which stops pumping
 // LVGL -- and therefore stops reading touch through it -- while this is false).
 bool isScreenOn();
+bool isDimmed();
 
 } // namespace power

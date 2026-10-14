@@ -90,6 +90,8 @@ void service() {
 
 bool isScreenOn() { return screenOn; }
 
+bool isDimmed() { return dimmed; }
+
 void setScreenTimeout(uint32_t seconds) { screenTimeoutMs = seconds * 1000; }
 
 void setSleepTimeout(uint32_t minutes) { sleepTimeoutMs = minutes * 60000UL; }
