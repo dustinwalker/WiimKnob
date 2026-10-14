@@ -66,6 +66,7 @@ int pendingVolume = -1;
 volatile bool metaRefreshRequested = false;
 
 volatile uint32_t statusPollMs = POLL_STATUS_MS;
+Diagnostics diag;
 String lastAlbumArtUrl;
 
 // Some sources (seen with Qobuz Connect) report status "none" whether playing or paused. Infer
@@ -112,8 +113,11 @@ void publishRecent() {
 void refreshMetadata() {
   TrackMetadata meta;
   if (!bgClient.fetchMetadata(meta)) {
+    diag.metaFailures++;
     return;
   }
+  diag.metaOk++;
+  diag.lastMetaOkMs = millis();
 
   bool artChanged = false;
   if (meta.albumArtUrl.startsWith("http") && meta.albumArtUrl != lastAlbumArtUrl) {
@@ -125,6 +129,7 @@ void refreshMetadata() {
       lastAlbumArtUrl = meta.albumArtUrl;
       artChanged = true;
     } else {
+      diag.artFailures++;
       Serial.printf("[art] fetch failed (internal heap free %u, largest block %u)\n",
                     (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
                     (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
@@ -328,6 +333,8 @@ TrackMetadata getMetadata() {
 }
 
 void setStatusPollMs(uint32_t ms) { statusPollMs = ms; }
+
+Diagnostics diagnostics() { return diag; }
 
 const lv_img_dsc_t *getAlbumArt() { return wiim::albumart::descriptor(); }
 

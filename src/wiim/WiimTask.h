@@ -31,6 +31,15 @@ void requestVolume(int volume0to100);
 // How often play state and volume are polled. Defaults to POLL_STATUS_MS from Config.h.
 void setStatusPollMs(uint32_t ms);
 
+// Counters for the /status page.
+struct Diagnostics {
+  uint32_t metaOk = 0;
+  uint32_t metaFailures = 0;
+  uint32_t artFailures = 0;
+  uint32_t lastMetaOkMs = 0;
+};
+Diagnostics diagnostics();
+
 // Non-blocking snapshot reads, safe to call every loop() iteration.
 bool isConnected();
 PlayerState getPlayerState();
