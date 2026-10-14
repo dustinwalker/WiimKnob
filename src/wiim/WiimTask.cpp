@@ -306,30 +306,31 @@ void begin(const String &host) {
 
 void requestNext() {
   Request req = {Cmd::kNext, 0};
-  xQueueSend(cmdQueue, &req, 0);
+  if (cmdQueue) xQueueSend(cmdQueue, &req, 0); // null until begin(): taps can land during the boot Wi-Fi wait
 }
 
 void requestPrevious() {
   Request req = {Cmd::kPrevious, 0};
-  xQueueSend(cmdQueue, &req, 0);
+  if (cmdQueue) xQueueSend(cmdQueue, &req, 0);
 }
 
 void requestTogglePause() {
   Request req = {Cmd::kTogglePause, 0};
-  xQueueSend(cmdQueue, &req, 0);
+  if (cmdQueue) xQueueSend(cmdQueue, &req, 0);
 }
 
 void requestPreset(int key) {
   Request req = {Cmd::kPlayPreset, key};
-  xQueueSend(cmdQueue, &req, 0);
+  if (cmdQueue) xQueueSend(cmdQueue, &req, 0);
 }
 
 void requestRecent(int slot) {
   Request req = {Cmd::kPlayRecent, slot};
-  xQueueSend(cmdQueue, &req, 0);
+  if (cmdQueue) xQueueSend(cmdQueue, &req, 0);
 }
 
 void requestVolume(int volume0to100) {
+  if (!stateMutex) return;
   xSemaphoreTake(stateMutex, portMAX_DELAY);
   pendingVolume = volume0to100;
   volumeDirty = true;
