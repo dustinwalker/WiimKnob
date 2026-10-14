@@ -46,6 +46,8 @@ PlayerState getPlayerState();
 TrackMetadata getMetadata();
 const lv_img_dsc_t *getAlbumArt();
 const lv_img_dsc_t *getAlbumArtTinted();
+// True from a track change until its album art has been downloaded (or a few seconds pass).
+bool isArtPending();
 
 // Bumped whenever title/artist/album art changes. Compare against a value you saved from a
 // previous call to know whether it's worth re-reading getMetadata()/getAlbumArt().

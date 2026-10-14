@@ -316,6 +316,8 @@ void syncUiFromWiimTask() {
     ui::setVolume(localVolume);
   }
 
+  ui::setArtPending(wiim::task::isArtPending());
+
   uint32_t version = wiim::task::metadataVersion();
   if (version != lastSeenMetaVersion) {
     lastSeenMetaVersion = version;

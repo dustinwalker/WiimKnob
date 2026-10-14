@@ -67,6 +67,9 @@ volatile bool metaRefreshRequested = false;
 
 volatile uint32_t statusPollMs = POLL_STATUS_MS;
 Diagnostics diag;
+bool artPending = false;
+uint32_t artPendingSinceMs = 0;
+constexpr uint32_t kArtPendingMaxMs = 8000; // some sources never send art for a track
 String lastAlbumArtUrl;
 
 // Some sources (seen with Qobuz Connect) report status "none" whether playing or paused. Infer
@@ -119,15 +122,36 @@ void refreshMetadata() {
   diag.metaOk++;
   diag.lastMetaOkMs = millis();
 
-  bool artChanged = false;
-  if (meta.albumArtUrl.startsWith("http") && meta.albumArtUrl != lastAlbumArtUrl) {
+  bool needArt = meta.albumArtUrl.startsWith("http") && meta.albumArtUrl != lastAlbumArtUrl;
+
+  // Publish the text before downloading art, so the title doesn't wait on the download. The
+  // art is pending while that download runs, or when the album changed but the WiiM is still
+  // reporting the old cover link (Roon updates the link a poll or two after the title).
+  xSemaphoreTake(stateMutex, portMAX_DELAY);
+  bool textChanged = meta.title != latestMeta.title || meta.artist != latestMeta.artist ||
+                     meta.album != latestMeta.album;
+  if (needArt || (meta.album != latestMeta.album && !artPending)) {
+    artPending = true;
+    artPendingSinceMs = millis();
+  }
+  latestMeta = meta;
+  if (textChanged || needArt) {
+    metaVersionCounter++;
+  }
+  PlayerState player = latestPlayer;
+  xSemaphoreGive(stateMutex);
+
+  if (needArt) {
     // Free this task's own TLS session first: with the command task's one also open, there
     // isn't internal RAM for a third (see WiimClient::closeConnection). It reconnects on the
     // next metadata poll, which only costs this background task a handshake.
     bgClient.closeConnection();
     if (wiim::albumart::fetch(meta.albumArtUrl)) {
       lastAlbumArtUrl = meta.albumArtUrl;
-      artChanged = true;
+      xSemaphoreTake(stateMutex, portMAX_DELAY);
+      artPending = false;
+      metaVersionCounter++;
+      xSemaphoreGive(stateMutex);
     } else {
       diag.artFailures++;
       Serial.printf("[art] fetch failed (internal heap free %u, largest block %u)\n",
@@ -135,16 +159,6 @@ void refreshMetadata() {
                     (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
     }
   }
-
-  xSemaphoreTake(stateMutex, portMAX_DELAY);
-  bool textChanged = meta.title != latestMeta.title || meta.artist != latestMeta.artist ||
-                     meta.album != latestMeta.album;
-  latestMeta = meta;
-  if (textChanged || artChanged) {
-    metaVersionCounter++;
-  }
-  PlayerState player = latestPlayer;
-  xSemaphoreGive(stateMutex);
 
   // After the art fetch above, so a newly saved album gets this album's thumbnail.
   if (recent::notePlaying(bgClient, meta, player)) {
@@ -346,6 +360,13 @@ TrackMetadata getMetadata() {
 void setStatusPollMs(uint32_t ms) { statusPollMs = ms; }
 
 Diagnostics diagnostics() { return diag; }
+
+bool isArtPending() {
+  xSemaphoreTake(stateMutex, portMAX_DELAY);
+  bool pending = artPending && millis() - artPendingSinceMs < kArtPendingMaxMs;
+  xSemaphoreGive(stateMutex);
+  return pending;
+}
 
 const lv_img_dsc_t *getAlbumArt() { return wiim::albumart::descriptor(); }
 

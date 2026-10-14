@@ -51,6 +51,8 @@ void setControlsTimeout(uint32_t seconds);
 void setPlaying(bool playing);
 // Thin ring around the edge while only the art is showing. Interpolates between reports.
 void setProgress(long positionMs, long durationMs, bool playing);
+// Darkens the art while the new track's art is still on its way.
+void setArtPending(bool pending);
 void setConnected(bool connected); // small dot at the top of the controls
 
 // Battery-shaped icon with a proportional, color-coded fill; tap toggles it to a plain

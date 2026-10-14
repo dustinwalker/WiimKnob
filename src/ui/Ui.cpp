@@ -1109,6 +1109,18 @@ void setProgress(long positionMs, long durationMs, bool playing) {
   }
 }
 
+void setArtPending(bool pending) {
+  static int last = -1;
+  if (last == (int)pending) return;
+  last = pending;
+  // Recolor, not opacity: frontImg's opacity belongs to the controls fade.
+  lv_opa_t opa = pending ? LV_OPA_60 : LV_OPA_TRANSP;
+  lv_obj_set_style_img_recolor(artImg, lv_color_black(), 0);
+  lv_obj_set_style_img_recolor(frontImg, lv_color_black(), 0);
+  lv_obj_set_style_img_recolor_opa(artImg, opa, 0);
+  lv_obj_set_style_img_recolor_opa(frontImg, opa, 0);
+}
+
 void setConnected(bool connected) {
   static int last = -1;
   if (last == (int)connected) return;
