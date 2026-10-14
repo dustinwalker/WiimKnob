@@ -222,4 +222,27 @@ void setSetupStatus(const char *text) {
   if (setupStatus) lv_label_set_text(setupStatus, text);
 }
 
+void showMessage(const char *title, const char *body) {
+  lv_obj_t *scr = lv_obj_create(NULL);
+  lv_obj_set_style_bg_color(scr, lv_color_black(), 0);
+  lv_obj_clear_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_t *t = lv_label_create(scr);
+  lv_obj_set_style_text_font(t, &lv_font_montserrat_20_latin, 0);
+  lv_obj_set_style_text_color(t, lv_color_hex(kAccentColor), 0);
+  lv_label_set_text(t, title);
+  lv_obj_align(t, LV_ALIGN_CENTER, 0, -20);
+
+  lv_obj_t *b = lv_label_create(scr);
+  lv_obj_set_width(b, 240);
+  lv_label_set_long_mode(b, LV_LABEL_LONG_WRAP);
+  lv_obj_set_style_text_align(b, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_text_font(b, &lv_font_montserrat_16_latin, 0);
+  lv_obj_set_style_text_color(b, lv_color_white(), 0);
+  lv_label_set_text(b, body);
+  lv_obj_align(b, LV_ALIGN_CENTER, 0, 20);
+
+  lv_scr_load(scr);
+}
+
 } // namespace ui

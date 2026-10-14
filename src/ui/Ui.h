@@ -75,4 +75,7 @@ void setNetworkInfo(const char *ssid, const char *ip, const char *signal, const 
 void showSetup(const char *apName, const char *apPassword, const char *qrPayload, void (*onCancel)());
 void setSetupStatus(const char *text);
 
+// Full-screen notice (e.g. low battery), replacing the normal pages.
+void showMessage(const char *title, const char *body);
+
 } // namespace ui

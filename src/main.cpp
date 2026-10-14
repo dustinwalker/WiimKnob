@@ -395,6 +395,8 @@ void applyPowerSource(bool external) {
   Serial.printf("[power] %s\n", external ? "USB power: staying awake" : "on battery");
 }
 
+constexpr float kLowBatteryVolts = 3.45f; // ~5% on the generic LiPo curve in Battery.cpp
+
 void serviceBattery() {
   uint32_t now = millis();
   if (now - lastBatteryPollMs < kBatteryPollMs) {
@@ -406,6 +408,17 @@ void serviceBattery() {
   ui::setBattery(reading.percent, reading.externalPower);
   if (reading.externalPower != onExternalPower) applyPowerSource(reading.externalPower);
 
+  // Sleep before the cell runs flat, so it never just goes dark: three low readings in a row
+  // (15s) rule out a one-off dip under load.
+  static int lowReadings = 0;
+  lowReadings = (!reading.externalPower && reading.voltage < kLowBatteryVolts) ? lowReadings + 1 : 0;
+  if (lowReadings >= 3) {
+    power::noteActivity();
+    ui::showMessage("Battery low", "Charge me. Going to sleep...");
+    display::refreshNow();
+    delay(4000);
+    power::sleepNow("Battery low");
+  }
 
   // Not shown on screen anymore (see the battery screen removal) -- kept here so the raw
   // voltage is still checkable for calibrating BATTERY_DIVIDER_RATIO in Config.h.
