@@ -95,6 +95,7 @@ int lastFiredKey = 0;               // survives a grid rebuild
 
 // Settings.
 constexpr int kMaxSettings = 6;
+lv_obj_t *settingsList = nullptr;
 lv_obj_t *settingRows[kMaxSettings] = {};
 lv_obj_t *settingValues[kMaxSettings] = {};
 int settingCount = 0;
@@ -807,6 +808,20 @@ void begin(const Callbacks &cbs) {
   lv_label_set_text(settingsTitle, "Settings");
   lv_obj_align(settingsTitle, LV_ALIGN_TOP_MID, 0, 46);
 
+  // Scrolls vertically only, so a horizontal swipe still reaches the screen and changes pages.
+  settingsList = lv_obj_create(set);
+  lv_obj_set_size(settingsList, 280, 236);
+  lv_obj_align(settingsList, LV_ALIGN_CENTER, 0, 4);
+  lv_obj_set_style_bg_opa(settingsList, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(settingsList, 0, 0);
+  lv_obj_set_style_pad_all(settingsList, 4, 0);
+  lv_obj_set_style_pad_row(settingsList, 6, 0);
+  lv_obj_set_flex_flow(settingsList, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(settingsList, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_scroll_dir(settingsList, LV_DIR_VER);
+  lv_obj_set_scrollbar_mode(settingsList, LV_SCROLLBAR_MODE_OFF);
+  lv_obj_add_flag(settingsList, LV_OBJ_FLAG_GESTURE_BUBBLE);
+
   lv_obj_t *settingsHint = lv_label_create(set);
   lv_obj_set_style_text_font(settingsHint, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_color(settingsHint, lv_color_hex(0x707070), 0);
@@ -921,11 +936,9 @@ void setPresets(const PresetTile *tiles, int count) {
 void setSettings(const char *const *labels, int count) {
   if (count > kMaxSettings) count = kMaxSettings;
   settingCount = count;
-  constexpr int kRowH = 40, kGap = 5;
-  int top = -((count * kRowH + (count - 1) * kGap) / 2) + kRowH / 2 - 6;
   for (int i = 0; i < count; i++) {
-    lv_obj_t *row = lv_obj_create(screens[kSettings]);
-    lv_obj_set_size(row, 256, kRowH);
+    lv_obj_t *row = lv_obj_create(settingsList);
+    lv_obj_set_size(row, 256, 46);
     lv_obj_set_style_radius(row, 14, 0);
     lv_obj_set_style_bg_color(row, lv_color_white(), 0);
     lv_obj_set_style_bg_opa(row, LV_OPA_10, 0);
@@ -934,7 +947,6 @@ void setSettings(const char *const *labels, int count) {
     lv_obj_set_style_border_color(row, lv_color_hex(kAccentColor), 0);
     lv_obj_set_style_border_opa(row, LV_OPA_TRANSP, 0);
     lv_obj_set_style_pad_hor(row, 16, 0);
-    lv_obj_align(row, LV_ALIGN_CENTER, 0, top + i * (kRowH + kGap));
     lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(row, LV_OBJ_FLAG_GESTURE_BUBBLE);
     lv_obj_add_event_cb(row, onSettingClicked, LV_EVENT_CLICKED, (void *)(intptr_t)i);
