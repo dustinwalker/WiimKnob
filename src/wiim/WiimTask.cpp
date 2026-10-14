@@ -66,6 +66,7 @@ int pendingVolume = -1;
 volatile bool metaRefreshRequested = false;
 
 volatile uint32_t statusPollMs = POLL_STATUS_MS;
+volatile bool recentCapture = true;
 Diagnostics diag;
 bool artPending = false;
 uint32_t artPendingSinceMs = 0;
@@ -177,7 +178,7 @@ void refreshMetadata() {
   }
 
   // After the art fetch above, so a newly saved album gets this album's thumbnail.
-  if (recent::notePlaying(bgClient, meta, player)) {
+  if (recentCapture && recent::notePlaying(bgClient, meta, player)) {
     publishRecent();
   }
 }
@@ -375,6 +376,8 @@ TrackMetadata getMetadata() {
 }
 
 void setStatusPollMs(uint32_t ms) { statusPollMs = ms; }
+
+void setRecentCapture(bool on) { recentCapture = on; }
 
 Diagnostics diagnostics() { return diag; }
 

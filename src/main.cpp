@@ -90,6 +90,8 @@ void applySetting(settings::Item item) {
     break;
   case settings::kRecentPage:
     ui::setRecentEnabled(v);
+    wiim::task::setRecentCapture(v);
+    if (v) lastSeenRecentVersion = lastRecentMetaVersion = UINT32_MAX; // rebuild the tiles skipped while hidden
     break;
   default:
     break;
@@ -136,6 +138,7 @@ void describePreset(const wiim::Preset &p, bool wiimOnEthernet, String &subtitle
 // Rebuilt when the saved list changes, and on every track change too so the red ring follows
 // whichever album is actually playing.
 void syncRecent() {
+  if (!settings::value(settings::kRecentPage)) return;
   uint32_t version = wiim::task::recentVersion();
   uint32_t metaVersion = wiim::task::metadataVersion();
   if (version == lastSeenRecentVersion && metaVersion == lastRecentMetaVersion) {

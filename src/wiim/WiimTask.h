@@ -31,6 +31,9 @@ void requestVolume(int volume0to100);
 // How often play state and volume are polled. Defaults to POLL_STATUS_MS from Config.h.
 void setStatusPollMs(uint32_t ms);
 
+// Whether newly played albums are saved to Recently played (off while that page is hidden).
+void setRecentCapture(bool on);
+
 // Counters for the /status page.
 struct Diagnostics {
   uint32_t metaOk = 0;
