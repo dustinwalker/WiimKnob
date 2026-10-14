@@ -57,6 +57,7 @@ lv_obj_t *skipFlash = nullptr; // big prev/next icon after a swipe on the art
 lv_obj_t *skipFlashIcon = nullptr;
 lv_obj_t *skipSpinner = nullptr;
 bool skipPending = false; // waiting for the WiiM to report the track a skip asked for
+bool skipWasPrevious = false;
 uint32_t skipStartedMs = 0;
 constexpr uint32_t kSkipWaitMaxMs = 6000;
 lv_obj_t *tickerPill = nullptr; // "title · artist" left over the art while the controls are hidden
@@ -241,6 +242,7 @@ void endSkip() {
 // until the new track's metadata arrives -- the WiiM can take a second or two to switch.
 void startSkip(bool next) {
   skipPending = true;
+  skipWasPrevious = !next;
   skipStartedMs = lv_tick_get();
   if (controlsShown) {
     lv_obj_set_style_text_opa(titleLabel, LV_OPA_40, 0);
@@ -1097,7 +1099,7 @@ void setPlaying(bool playing) {
 
 void setProgress(long positionMs, long durationMs, bool playing) {
   if (positionMs == progressBaseMs && durationMs == progressDurationMs && playing == progressPlaying) return;
-  if (skipPending && positionMs < 3000 && progressBaseMs > 5000) endSkip(); // "previous" restarted the same track
+  if (skipPending && skipWasPrevious && positionMs < 3000 && progressBaseMs > 5000) endSkip(); // restarted the same track
   progressBaseMs = positionMs;
   progressDurationMs = durationMs;
   progressPlaying = playing;
