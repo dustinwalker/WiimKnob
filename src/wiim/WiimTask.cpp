@@ -42,8 +42,8 @@ constexpr uint32_t kPresetRetryMs = 15 * 1000;
 //    played albums, refreshing the preset list. Any of those can take seconds, and they used
 //    to share one task with the commands -- a preset tap could sit in the queue until an album
 //    art download finished.
-WiimClient cmdClient(WIIM_HOST);
-WiimClient bgClient(WIIM_HOST);
+WiimClient cmdClient("");
+WiimClient bgClient("");
 
 SemaphoreHandle_t stateMutex;
 QueueHandle_t cmdQueue;
@@ -269,7 +269,9 @@ void bgTaskFn(void *) {
 
 } // namespace
 
-void begin() {
+void begin(const String &host) {
+  cmdClient.setHost(host);
+  bgClient.setHost(host);
   stateMutex = xSemaphoreCreateMutex();
   cmdQueue = xQueueCreate(8, sizeof(Request));
   // Pinned to core 0, away from loop() (core 1 by default under Arduino) -- see WiimTask.h.

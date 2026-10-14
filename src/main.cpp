@@ -9,6 +9,7 @@
 #include "haptics/Haptics.h"
 #include "input/Knob.h"
 #include "input/Touch.h"
+#include "net/NetConfig.h"
 #include "power/Battery.h"
 #include "power/Power.h"
 #include "settings/Settings.h"
@@ -246,15 +247,23 @@ void beginStatusServer() {
   statusServer.begin();
 }
 
-void connectWiFi() {
+net::Config netConfig;
+
+bool connectWiFi(uint32_t timeoutMs) {
   WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  Serial.printf("Connecting to Wi-Fi '%s'...\n", WIFI_SSID);
+  WiFi.begin(netConfig.ssid.c_str(), netConfig.password.c_str());
+  Serial.printf("Connecting to Wi-Fi '%s'...\n", netConfig.ssid.c_str());
+  uint32_t started = millis();
   while (WiFi.status() != WL_CONNECTED) {
-    delay(250);
-    Serial.print(".");
+    if (millis() - started > timeoutMs) {
+      Serial.println("\nCouldn't connect");
+      return false;
+    }
+    display::tick();
+    delay(50);
   }
   Serial.printf("\nConnected, IP: %s\n", WiFi.localIP().toString().c_str());
+  return true;
 }
 
 // Mirrors whatever the background WiiM task last found onto the UI. Cheap (a couple of mutex-
@@ -365,11 +374,13 @@ void setup() {
   power::begin();
   power::battery::begin();
 
-  connectWiFi();
+  netConfig = net::load();
+  while (!connectWiFi(20000)) {
+  }
   beginOta();
   beginStatusServer();
 
-  wiim::task::begin();
+  wiim::task::begin(netConfig.wiimHost);
 }
 
 void loop() {

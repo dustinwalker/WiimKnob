@@ -15,7 +15,7 @@ namespace wiim {
 namespace task {
 
 // Starts the background task. Call once from setup().
-void begin();
+void begin(const String &host);
 
 // Non-blocking: enqueues the command for the background task to send as soon as it can.
 void requestNext();

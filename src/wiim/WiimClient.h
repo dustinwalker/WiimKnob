@@ -51,6 +51,7 @@ struct PresetList {
 class WiimClient {
 public:
   explicit WiimClient(const char *host);
+  void setHost(const String &host) { host_ = host; }
 
   // GET getPlayerStatus. Returns false on network/parse failure (state left unchanged).
   bool fetchStatus(PlayerState &state);
