@@ -13,7 +13,7 @@ namespace {
 
 enum class State { kIdle, kConnecting, kDiscovering, kChooseWiim, kFailed, kDone };
 
-const IPAddress kApIp(192, 168, 4, 1);
+const IPAddress kApIp(10, 254, 254, 1); // not the default 192.168.4.1, which home VLANs use and AP+STA would clash with
 constexpr uint32_t kConnectTimeoutMs = 20000;
 constexpr uint32_t kIdleRestartMs = 10 * 60 * 1000; // retry the saved network if nobody shows up
 
@@ -210,7 +210,7 @@ void setupRoutes() {
   });
   // Every unknown URL (the phone's captive-portal probes included) lands on the setup page.
   server.onNotFound([]() {
-    server.sendHeader("Location", "http://192.168.4.1/", true);
+    server.sendHeader("Location", "http://10.254.254.1/", true);
     server.send(302, "text/plain", "");
   });
 }
@@ -230,7 +230,7 @@ void run(const Config &current, void (*tick)()) {
 
   ui::showSetup(kApName, "WIFI:T:nopass;S:WiimKnob-Setup;;", onCancel);
   setState(State::kIdle, "Waiting for your phone...");
-  Serial.printf("[setup] join '%s' and open http://192.168.4.1\n", kApName);
+  Serial.printf("[setup] join '%s' and open http://10.254.254.1\n", kApName);
 
   for (;;) {
     dns.processNextRequest();
