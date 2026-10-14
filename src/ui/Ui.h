@@ -64,6 +64,7 @@ void setSettings(const char *const *labels, int count);
 void setSettingValue(int index, const char *text);
 void setSelectedSetting(int index);
 bool isSettingsActive();
+void setRecentEnabled(bool enabled);
 
 // Network page: read-only status plus a hold-to-start Wi-Fi setup button.
 void setNetworkInfo(const char *ssid, const char *ip, const char *signal, const char *wiim);

@@ -88,6 +88,9 @@ void applySetting(settings::Item item) {
   case settings::kSleepTimeout:
     power::setSleepTimeout(v);
     break;
+  case settings::kRecentPage:
+    ui::setRecentEnabled(v);
+    break;
   default:
     break;
   }

@@ -38,6 +38,8 @@ constexpr int kNetwork = 4;
 constexpr int kScreenCount = 5;
 
 lv_obj_t *screens[kScreenCount];
+bool pageEnabled[kScreenCount] = {true, true, true, true, true};
+lv_obj_t *pageDots[kScreenCount][kScreenCount] = {};
 int activeScreen = kNowPlaying;
 
 // Now playing: full-screen art. A tap, a knob turn or waking the screen brings the controls up
@@ -133,6 +135,7 @@ void onBatteryBadgeClicked(lv_event_t *e) {
 }
 
 void goToScreen(int index, bool forward) {
+  while (index >= 0 && index < kScreenCount && !pageEnabled[index]) index += forward ? 1 : -1;
   if (index < 0 || index >= kScreenCount || index == activeScreen) {
     return;
   }
@@ -242,19 +245,38 @@ void onGesture(lv_event_t *e) {
   }
 }
 
-void makePageDots(lv_obj_t *parent, int activeIndex) {
-  constexpr int kSpacing = 14;
-  float mid = (kScreenCount - 1) / 2.0f;
+// One row of dots per page; layoutPageDots() places them, skipping disabled pages.
+void makePageDots(lv_obj_t *parent, int page) {
   for (int i = 0; i < kScreenCount; i++) {
     lv_obj_t *dot = lv_obj_create(parent);
     lv_obj_set_size(dot, 6, 6);
     lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_border_width(dot, 0, 0);
     lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
-    lv_obj_set_style_bg_color(dot, i == activeIndex ? lv_color_hex(kAccentColor) : lv_color_hex(0x555555), 0);
+    lv_obj_set_style_bg_color(dot, i == page ? lv_color_hex(kAccentColor) : lv_color_hex(0x555555), 0);
     lv_obj_clear_flag(dot, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_clear_flag(dot, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_align(dot, LV_ALIGN_BOTTOM_MID, (int)((i - mid) * kSpacing), -14);
+    pageDots[page][i] = dot;
+  }
+}
+
+void layoutPageDots() {
+  constexpr int kSpacing = 14;
+  int enabled = 0;
+  for (int i = 0; i < kScreenCount; i++) enabled += pageEnabled[i];
+  float mid = (enabled - 1) / 2.0f;
+  for (int page = 0; page < kScreenCount; page++) {
+    int slot = 0;
+    for (int i = 0; i < kScreenCount; i++) {
+      lv_obj_t *dot = pageDots[page][i];
+      if (!dot) continue;
+      if (!pageEnabled[i]) {
+        lv_obj_add_flag(dot, LV_OBJ_FLAG_HIDDEN);
+        continue;
+      }
+      lv_obj_clear_flag(dot, LV_OBJ_FLAG_HIDDEN);
+      lv_obj_align(dot, LV_ALIGN_BOTTOM_MID, (int)((slot++ - mid) * kSpacing), -14);
+    }
   }
 }
 
@@ -744,7 +766,7 @@ void begin(const Callbacks &cbs) {
   lv_obj_set_style_text_font(settingsHint, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_color(settingsHint, lv_color_hex(0x707070), 0);
   lv_label_set_text(settingsHint, "Tap a row, turn to adjust");
-  lv_obj_align(settingsHint, LV_ALIGN_BOTTOM_MID, 0, -50);
+  lv_obj_align(settingsHint, LV_ALIGN_BOTTOM_MID, 0, -32);
 
   makePageDots(set, kSettings);
 
@@ -778,6 +800,7 @@ void begin(const Callbacks &cbs) {
 
   makePageDots(net, kNetwork);
 
+  layoutPageDots();
   lv_scr_load(screens[kNowPlaying]);
 }
 
@@ -853,11 +876,11 @@ void setPresets(const PresetTile *tiles, int count) {
 void setSettings(const char *const *labels, int count) {
   if (count > kMaxSettings) count = kMaxSettings;
   settingCount = count;
-  constexpr int kRowH = 46, kGap = 6;
-  int top = -((count * kRowH + (count - 1) * kGap) / 2) + kRowH / 2;
+  constexpr int kRowH = 40, kGap = 5;
+  int top = -((count * kRowH + (count - 1) * kGap) / 2) + kRowH / 2 - 6;
   for (int i = 0; i < count; i++) {
     lv_obj_t *row = lv_obj_create(screens[kSettings]);
-    lv_obj_set_size(row, 270, kRowH);
+    lv_obj_set_size(row, 256, kRowH);
     lv_obj_set_style_radius(row, 14, 0);
     lv_obj_set_style_bg_color(row, lv_color_white(), 0);
     lv_obj_set_style_bg_opa(row, LV_OPA_10, 0);
@@ -900,6 +923,12 @@ void setSelectedSetting(int index) {
 }
 
 bool isSettingsActive() { return activeScreen == kSettings; }
+
+void setRecentEnabled(bool enabled) {
+  if (pageEnabled[kRecent] == enabled) return;
+  pageEnabled[kRecent] = enabled;
+  layoutPageDots();
+}
 
 void setNetworkInfo(const char *ssid, const char *ip, const char *signal, const char *wiim) {
   const char *values[] = {ssid, ip, signal, wiim};

@@ -23,6 +23,7 @@ const int kBrightnessOpts[] = {10, 20, 30, 40, 50, 60, 70, 80, 90, 100};
 const int kControlsOpts[] = {3, 5, 8, 10, 15, 20, 30};
 const int kScreenOpts[] = {20, 30, 45, 70, 90, 120, 180, 300};
 const int kSleepOpts[] = {2, 5, 10, 15, 30, 60};
+const int kOnOffOpts[] = {0, 1};
 
 #define OPTS(a) a, (int)(sizeof(a) / sizeof(a[0]))
 const Spec kSpecs[kCount] = {
@@ -30,6 +31,7 @@ const Spec kSpecs[kCount] = {
     {"ctrl", "Hide controls", OPTS(kControlsOpts), CONTROLS_TIMEOUT_S},
     {"screen", "Screen off", OPTS(kScreenOpts), SCREEN_TIMEOUT_S},
     {"sleep", "Sleep", OPTS(kSleepOpts), DEEP_SLEEP_TIMEOUT_MIN},
+    {"recent", "Recently played", OPTS(kOnOffOpts), 0}, // off: Roon and Connect sources leave nothing to save
 };
 #undef OPTS
 
@@ -68,6 +70,9 @@ void format(Item item, char *buf, size_t len) {
     break;
   case kSleepTimeout:
     snprintf(buf, len, "%d min", v);
+    break;
+  case kRecentPage:
+    snprintf(buf, len, "%s", v ? "On" : "Off");
     break;
   default:
     if (v >= 60 && v % 60 == 0) {
