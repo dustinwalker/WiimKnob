@@ -127,6 +127,7 @@ void goToScreen(int index, bool forward) {
 void setArtOn(lv_obj_t *img, const lv_img_dsc_t *art, int coverSize);
 
 constexpr uint32_t kControlsFadeMs = 500;
+constexpr lv_opa_t kArtPendingDim = 190; // ~75% black over the old cover while the new one loads
 
 void applyArt() {
   setArtOn(artImg, tintedArt ? tintedArt : plainArt, 360);
@@ -894,16 +895,37 @@ void setProgress(long positionMs, long durationMs, bool playing) {
   }
 }
 
+namespace {
+void artDimCb(void *, int32_t v) {
+  lv_obj_set_style_img_recolor_opa(artImg, v, 0);
+  lv_obj_set_style_img_recolor_opa(frontImg, v, 0);
+}
+} // namespace
+
 void setArtPending(bool pending) {
   static int last = -1;
   if (last == (int)pending) return;
+  bool first = last < 0; // the boot cover: dim straight away, no flash of it at full brightness
   last = pending;
   // Recolor, not opacity: frontImg's opacity belongs to the controls fade.
-  lv_opa_t opa = pending ? LV_OPA_60 : LV_OPA_TRANSP;
   lv_obj_set_style_img_recolor(artImg, lv_color_black(), 0);
   lv_obj_set_style_img_recolor(frontImg, lv_color_black(), 0);
-  lv_obj_set_style_img_recolor_opa(artImg, opa, 0);
-  lv_obj_set_style_img_recolor_opa(frontImg, opa, 0);
+  lv_opa_t from = lv_obj_get_style_img_recolor_opa(artImg, LV_PART_MAIN);
+  lv_opa_t to = pending ? kArtPendingDim : LV_OPA_TRANSP;
+  lv_anim_del(artImg, artDimCb);
+  if (first) {
+    artDimCb(nullptr, to);
+    return;
+  }
+  // The new cover arrives in the same frame as the undim, so it fades up from the dimmed level.
+  lv_anim_t a;
+  lv_anim_init(&a);
+  lv_anim_set_var(&a, artImg);
+  lv_anim_set_exec_cb(&a, artDimCb);
+  lv_anim_set_values(&a, from, to);
+  lv_anim_set_time(&a, pending ? 150 : 400);
+  lv_anim_set_path_cb(&a, pending ? lv_anim_path_linear : lv_anim_path_ease_out);
+  lv_anim_start(&a);
 }
 
 void setConnected(bool connected) {
