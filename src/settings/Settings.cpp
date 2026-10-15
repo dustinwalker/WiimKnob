@@ -27,7 +27,7 @@ const int kOnOffOpts[] = {0, 1};
 
 #define OPTS(a) a, (int)(sizeof(a) / sizeof(a[0]))
 const Spec kSpecs[kCount] = {
-    {"bright", "Brightness", OPTS(kBrightnessOpts), 100},
+    {"bright", "Brightness", OPTS(kBrightnessOpts), 70}, // the backlight is the biggest awake draw
     {"ctrl", "Hide controls", OPTS(kControlsOpts), CONTROLS_TIMEOUT_S},
     {"screen", "Screen off", OPTS(kScreenOpts), SCREEN_TIMEOUT_S},
     {"sleep", "Sleep", OPTS(kSleepOpts), DEEP_SLEEP_TIMEOUT_MIN},
