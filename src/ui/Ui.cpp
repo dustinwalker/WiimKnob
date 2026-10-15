@@ -155,6 +155,8 @@ void progressTimerCb(lv_timer_t *) {
   if (!lv_obj_has_flag(progressArc, LV_OBJ_FLAG_HIDDEN)) updateProgressArc();
 }
 
+void tickerOpaCb(void *, int32_t v) { lv_obj_set_style_opa(tickerPill, v, 0); }
+
 void onControlsFadedOut(lv_anim_t *) {
   lv_obj_add_flag(controlsLayer, LV_OBJ_FLAG_HIDDEN);
   updateLoadingDots();
@@ -162,6 +164,8 @@ void onControlsFadedOut(lv_anim_t *) {
     updateProgressArc();
     lv_obj_clear_flag(progressArc, LV_OBJ_FLAG_HIDDEN);
   }
+  lv_anim_del(tickerPill, tickerOpaCb);
+  lv_obj_set_style_opa(tickerPill, LV_OPA_COVER, 0);
   if (lv_label_get_text(tickerLabel)[0]) lv_obj_clear_flag(tickerPill, LV_OBJ_FLAG_HIDDEN);
 }
 
@@ -171,6 +175,7 @@ void setControlsShown(bool shown) {
   if (shown == controlsShown) return;
   controlsShown = shown;
   lv_anim_del(frontImg, frontImgOpaCb);
+  lv_anim_del(tickerPill, tickerOpaCb);
   if (shown) {
     lv_obj_add_flag(tickerPill, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(progressArc, LV_OBJ_FLAG_HIDDEN);
@@ -192,6 +197,14 @@ void setControlsShown(bool shown) {
   lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
   lv_anim_set_ready_cb(&a, onControlsFadedOut);
   lv_anim_start(&a);
+  if (lv_label_get_text(tickerLabel)[0]) { // crossfades in as the controls' own title fades out
+    lv_obj_set_style_opa(tickerPill, LV_OPA_TRANSP, 0);
+    lv_obj_clear_flag(tickerPill, LV_OBJ_FLAG_HIDDEN);
+    lv_anim_set_var(&a, tickerPill);
+    lv_anim_set_exec_cb(&a, tickerOpaCb);
+    lv_anim_set_ready_cb(&a, nullptr);
+    lv_anim_start(&a);
+  }
 }
 
 void controlsTimerCb(lv_timer_t *) {
