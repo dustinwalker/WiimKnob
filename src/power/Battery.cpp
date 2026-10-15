@@ -146,6 +146,13 @@ uint32_t learnedRunMinutes() { return learnedMinutes; }
 
 float lowCutoffVolts() { return cutoffMv / 1000.0f; }
 
+String learnedCurveJson() {
+  if (!haveLearned) return "null";
+  String out = "[";
+  for (int k = 0; k < kCurvePoints; k++) out += (k ? "," : "") + String(learned[k]);
+  return out + "]";
+}
+
 void setLearnedCutoff(uint16_t mv) {
   cutoffMv = mv;
   Preferences prefs;

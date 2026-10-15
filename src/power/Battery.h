@@ -1,5 +1,6 @@
 #pragma once
 
+#include <Arduino.h>
 #include <stdint.h>
 
 namespace power {
@@ -32,6 +33,8 @@ bool hasLearnedCurve();
 float lowCutoffVolts();
 void setLearnedCutoff(uint16_t mv);
 uint32_t learnedRunMinutes();
+// The learned curve as a JSON array of millivolts at 100, 90 ... 0%, or "null".
+String learnedCurveJson();
 
 } // namespace battery
 } // namespace power

@@ -281,6 +281,8 @@ void beginStatusServer() {
     String json = body;
     json.trim();
     json.remove(json.length() - 1); // reopen the object to append the log
+    json += ",\"battery_curve_mv\":" + power::battery::learnedCurveJson();
+    json += ",\"battery_cutoff_v\":" + String(power::battery::lowCutoffVolts(), 3);
     json += ",\"boot_log\":" + power::bootLogJson() + "}\n";
     statusServer.send(200, "application/json", json);
   });
