@@ -14,4 +14,7 @@ void begin();
 // detent); each call restarts the effect rather than queuing.
 void buzz();
 
+// Standby, with the enable pin held low, ahead of deep sleep. begin() undoes it on the next boot.
+void sleep();
+
 } // namespace haptics

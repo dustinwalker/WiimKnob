@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <Wire.h>
+#include <driver/gpio.h>
 
 namespace haptics {
 
@@ -19,6 +20,7 @@ constexpr uint8_t kRegGo = 0x0C;
 constexpr uint8_t kRegFeedbackControl = 0x16;
 
 constexpr uint8_t kModeInternalTrigger = 0x00; // clears the power-on-reset STANDBY bit
+constexpr uint8_t kModeStandby = 0x40;         // never 0x80 (DEV_RESET): it wedges this board's chip
 constexpr uint8_t kLibraryLra = 6;
 constexpr uint8_t kEffectStrongClick = 1; // ROM effect #1, short and strong -- good for a "detent" feel
 constexpr uint8_t kFeedbackLraSelect = 0x80; // bit 7: 1 = LRA (this board's actuator, not ERM)
@@ -35,6 +37,7 @@ bool writeReg(uint8_t reg, uint8_t value) {
 } // namespace
 
 void begin() {
+  gpio_hold_dis((gpio_num_t)PIN_HAPTIC_ENABLE); // held low through the last deep sleep, see sleep()
   pinMode(PIN_HAPTIC_ENABLE, OUTPUT);
   digitalWrite(PIN_HAPTIC_ENABLE, HIGH); // without this the chip talks but the output stays off
 
@@ -56,6 +59,14 @@ void buzz() {
   writeReg(kRegWaveSeq0, kEffectStrongClick);
   writeReg(kRegWaveSeq1, 0); // terminates the sequence after one effect
   writeReg(kRegGo, 1);       // GO auto-clears itself once the effect finishes playing
+}
+
+void sleep() {
+  if (chipPresent) writeReg(kRegMode, kModeStandby);
+  // GPIO38 isn't an RTC pad, so without a hold it floats once the S3 sleeps.
+  digitalWrite(PIN_HAPTIC_ENABLE, LOW);
+  gpio_hold_en((gpio_num_t)PIN_HAPTIC_ENABLE);
+  gpio_deep_sleep_hold_en();
 }
 
 } // namespace haptics

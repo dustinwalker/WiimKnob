@@ -299,6 +299,11 @@ void onWifiSetup() {
   ESP.restart();
 }
 
+void beforeDeepSleep() {
+  wiim::albumart::saveBootArt();
+  haptics::sleep();
+}
+
 void setupTick() {
   display::tick();
   power::service(); // the screen times out and the knob sleeps during setup too
@@ -462,7 +467,7 @@ void setup() {
   haptics::begin(); // after touch.begin(), which brings up the I2C bus haptics shares
   input::knob::begin();
   power::begin();
-  power::setBeforeSleep(wiim::albumart::saveBootArt);
+  power::setBeforeSleep(beforeDeepSleep);
   if (const lv_img_dsc_t *bootArt = wiim::albumart::loadBootArt()) {
     // Last session's cover, dimmed, while reconnecting -- the real art replaces it.
     ui::setAlbumArt(bootArt, nullptr);
