@@ -21,6 +21,8 @@ const lv_img_dsc_t *descriptor();
 // A screen-sized copy with a dark gradient in the art's own color, for behind the on-screen
 // controls. nullptr if there's no art or it couldn't be built.
 const lv_img_dsc_t *tintedDescriptor();
+// 0xRRGGBB picked from the art for the progress ring; white for gray covers or no art.
+uint32_t accent();
 
 // URL of the image descriptor() currently holds (empty if none).
 const String &currentUrl();

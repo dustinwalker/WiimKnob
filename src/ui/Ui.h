@@ -39,8 +39,8 @@ void setPresets(const PresetTile *tiles, int count);
 
 void setTrack(const char *title, const char *artist, const char *album);
 // art nullptr shows a black backdrop with the controls always up; tinted is the backdrop used
-// while the controls are showing (falls back to art).
-void setAlbumArt(const lv_img_dsc_t *art, const lv_img_dsc_t *tinted);
+// while the controls are showing (falls back to art). accent (0xRRGGBB) colors the progress ring.
+void setAlbumArt(const lv_img_dsc_t *art, const lv_img_dsc_t *tinted, uint32_t accent = 0xFFFFFF);
 void setVolume(int volume0to100);
 // Brings the controls up over the art and restarts their hide timer. For knob turns and wakes,
 // which LVGL doesn't see as input.

@@ -52,6 +52,7 @@ PlayerState getPlayerState();
 TrackMetadata getMetadata();
 const lv_img_dsc_t *getAlbumArt();
 const lv_img_dsc_t *getAlbumArtTinted();
+uint32_t getAlbumArtAccent();
 // True from a track change until its album art has been downloaded (or a few seconds pass).
 bool isArtPending();
 

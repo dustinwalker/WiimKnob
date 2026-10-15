@@ -45,6 +45,7 @@ struct ShownArt {
   // controls costs a plain 1:1 image draw instead of blending a translucent layer every frame.
   uint16_t *tinted = nullptr;
   lv_img_dsc_t tintedDesc = {};
+  uint32_t accent = 0xFFFFFF; // 0xRRGGBB for the progress ring
 };
 ShownArt shown[2];
 volatile int current = -1;
@@ -196,6 +197,49 @@ void dominantColor(const uint16_t *src, int stride, int side, uint8_t &r, uint8_
   r = rs / ws;
   g = gs / ws;
   b = bs / ws;
+}
+
+// The strongest hue rather than an average, which turns a red-and-blue cover into mud. Brought up
+// to full brightness and eased toward white so it reads over the art as a tint, not a paint job.
+// Near-gray covers get white.
+uint32_t accentColor(const uint16_t *src, int stride, int side) {
+  constexpr int kBins = 12;
+  uint32_t weight[kBins] = {}, rs[kBins] = {}, gs[kBins] = {}, bs[kBins] = {}, total = 0, samples = 0;
+  for (int y = 0; y < side; y += 6) {
+    for (int x = 0; x < side; x += 6) {
+      uint16_t px = __builtin_bswap16(src[y * stride + x]);
+      int pr = (px >> 8) & 0xF8, pg = (px >> 3) & 0xFC, pb = (px << 3) & 0xF8;
+      int mx = max(pr, max(pg, pb)), mn = min(pr, min(pg, pb)), c = mx - mn;
+      samples++;
+      if (c < 24 || mx < 40) continue;
+      int h; // 0-359
+      if (mx == pr) h = (60 * (pg - pb) / c + 360) % 360;
+      else if (mx == pg) h = 60 * (pb - pr) / c + 120;
+      else h = 60 * (pr - pg) / c + 240;
+      int bin = h * kBins / 360;
+      uint32_t w = (uint32_t)c * c; // vivid pixels dominate
+      weight[bin] += w;
+      rs[bin] += pr * w;
+      gs[bin] += pg * w;
+      bs[bin] += pb * w;
+      total += c;
+    }
+  }
+  int best = 0;
+  for (int i = 1; i < kBins; i++) {
+    if (weight[i] > weight[best]) best = i;
+  }
+  if (!weight[best] || total < samples * 6) return 0xFFFFFF;
+  uint32_t r = rs[best] / weight[best], g = gs[best] / weight[best], b = bs[best] / weight[best];
+  uint32_t mx = max(r, max(g, b));
+  r = r * 255 / mx;
+  g = g * 255 / mx;
+  b = b * 255 / mx;
+  constexpr uint32_t kWhite = 90; // of 256
+  r = (r * (256 - kWhite) + 255 * kWhite) >> 8;
+  g = (g * (256 - kWhite) + 255 * kWhite) >> 8;
+  b = (b * (256 - kWhite) + 255 * kWhite) >> 8;
+  return (r << 16) | (g << 8) | b;
 }
 
 void makeTinted(ShownArt &art) {
@@ -399,6 +443,10 @@ bool fetch(const String &url) {
   art.desc.data_size = finalBytes;
   art.desc.data = (const uint8_t *)art.pixels;
   makeTinted(art);
+  {
+    int side = min(finalW, finalH);
+    art.accent = accentColor(&art.pixels[((finalH - side) / 2) * finalW + (finalW - side) / 2], finalW, side);
+  }
   current = &art - shown;
 
   lastUrl = url;
@@ -412,6 +460,8 @@ const lv_img_dsc_t *tintedDescriptor() {
   const lv_img_dsc_t &t = shown[current].tintedDesc;
   return t.data ? &t : nullptr;
 }
+
+uint32_t accent() { return current < 0 ? 0xFFFFFF : shown[current].accent; }
 
 const String &currentUrl() { return lastUrl; }
 

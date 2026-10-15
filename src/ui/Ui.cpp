@@ -528,12 +528,12 @@ void begin(const Callbacks &cbs) {
   lv_arc_set_range(progressArc, 0, 1000);
   lv_obj_remove_style(progressArc, NULL, LV_PART_KNOB);
   lv_obj_clear_flag(progressArc, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_set_style_arc_width(progressArc, 4, LV_PART_MAIN);
-  lv_obj_set_style_arc_width(progressArc, 4, LV_PART_INDICATOR);
+  lv_obj_set_style_arc_width(progressArc, 8, LV_PART_MAIN);
+  lv_obj_set_style_arc_width(progressArc, 8, LV_PART_INDICATOR);
   lv_obj_set_style_arc_color(progressArc, lv_color_black(), LV_PART_MAIN);
   lv_obj_set_style_arc_opa(progressArc, LV_OPA_40, LV_PART_MAIN);
   lv_obj_set_style_arc_color(progressArc, lv_color_white(), LV_PART_INDICATOR);
-  lv_obj_set_style_arc_opa(progressArc, LV_OPA_80, LV_PART_INDICATOR);
+  lv_obj_set_style_arc_opa(progressArc, LV_OPA_90, LV_PART_INDICATOR);
   lv_obj_set_style_bg_opa(progressArc, LV_OPA_TRANSP, 0);
   lv_obj_add_flag(progressArc, LV_OBJ_FLAG_HIDDEN);
   lv_timer_create(progressTimerCb, 1000, NULL);
@@ -898,9 +898,10 @@ void setTrack(const char *title, const char *artist, const char *album) {
   if (!lv_label_get_text(tickerLabel)[0]) lv_obj_add_flag(tickerPill, LV_OBJ_FLAG_HIDDEN);
 }
 
-void setAlbumArt(const lv_img_dsc_t *art, const lv_img_dsc_t *tinted) {
+void setAlbumArt(const lv_img_dsc_t *art, const lv_img_dsc_t *tinted, uint32_t accent) {
   plainArt = art;
   tintedArt = tinted;
+  lv_obj_set_style_arc_color(progressArc, lv_color_hex(accent), LV_PART_INDICATOR);
   if (!art) setControlsShown(true);
   applyArt();
 }
