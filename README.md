@@ -54,6 +54,22 @@ the button for setting up Wi-Fi again.
 - Track names draw in most of the world's scripts: accented Latin, Vietnamese, Cyrillic, Greek,
   Chinese, Japanese and Korean. The stock LVGL fonts only cover plain ASCII.
 
+### A note on Roon
+
+I mostly play to my WiiM Amp from Roon, so that's what this fork gets tested with. The knob only
+talks to the WiiM, never to Roon, and a few things come out differently:
+
+- Volume, play/pause, skipping and the progress ring work, since they all go through the WiiM.
+- New covers lag. When Roon changes tracks, the WiiM reports the new title first and the new
+  cover link a poll or two later. That gap is why the old art dims with bouncing dots while it
+  waits.
+- Recently played stays empty. Roon streams to the WiiM without a queue on the device, so there's
+  nothing to save or replay.
+- Firing a preset that switches the WiiM's input takes it away from Roon, the same as it would
+  from the WiiM Home app.
+
+If you use the WiiM Home app instead, everything above works as described.
+
 ## Screenshots
 
 These show the original four-screen layout. The controls now sit over full-screen art.
@@ -457,6 +473,9 @@ scripts/
 - **Play/pause for Connect sources.** Qobuz Connect reports "none" whether it's playing or
   paused, so the knob guesses from whether the track position is moving. The icon catches up
   about 2 seconds after a pause. Other Connect sources may do the same.
+- **Roon as a source.** Roon's extension API pushes track changes and serves covers at any size,
+  which would fix the art lag above. It needs a C++ client for Roon's discovery and messaging
+  protocols, since Roon only publishes a Node.js one.
 - **Rare characters.** The CJK font only holds the common sets, so an uncommon character in a
   name shows as a blank. Arabic, Hebrew, Thai and the Indic scripts aren't covered at all, and
   Arabic and Hebrew would also need right-to-left layout.
