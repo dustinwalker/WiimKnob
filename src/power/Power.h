@@ -48,6 +48,9 @@ void setSleepTimeout(uint32_t minutes);
 // resume from the moment it's unplugged.
 void setExternalPower(bool on);
 
+// Holds the screen on, undimmed, with no sleep (battery calibration needs a steady load).
+void setStayAwake(bool on);
+
 // Whether the backlight is currently on. Useful for callers that want to skip work that only
 // matters while something is actually visible (see main.cpp's loop(), which stops pumping
 // LVGL -- and therefore stops reading touch through it -- while this is false).

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stdint.h>
+
 namespace power {
 namespace battery {
 
@@ -19,6 +21,13 @@ Reading read();
 
 // The voltage from the most recent read(), unsmoothed. 0 before the first read.
 float lastRawVoltage();
+
+// A curve learned from this battery (see BatteryCal.h): millivolts at 100%, 90%, ... 0%, from a run
+// of runMinutes at a steady awake load. Saved to NVS and used instead of the generic LiPo curve.
+constexpr int kCurvePoints = 11;
+void setLearnedCurve(const uint16_t mv[kCurvePoints], uint32_t runMinutes);
+bool hasLearnedCurve();
+uint32_t learnedRunMinutes();
 
 } // namespace battery
 } // namespace power

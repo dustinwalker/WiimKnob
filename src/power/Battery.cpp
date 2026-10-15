@@ -2,6 +2,7 @@
 #include "Config.h"
 
 #include <Arduino.h>
+#include <Preferences.h>
 
 namespace power {
 namespace battery {
@@ -21,16 +22,35 @@ constexpr CurvePoint kCurve[] = {
     {3.82f, 50},  {3.79f, 40}, {3.77f, 30}, {3.74f, 20}, {3.68f, 10},
     {3.45f, 5},   {3.00f, 0},
 };
-constexpr int kCurvePoints = sizeof(kCurve) / sizeof(kCurve[0]);
+constexpr int kGenericPoints = sizeof(kCurve) / sizeof(kCurve[0]);
+
+uint16_t learned[kCurvePoints] = {}; // mV at 100, 90, ... 0%
+bool haveLearned = false;
+uint32_t learnedMinutes = 0;
+
+int learnedPercent(float voltage) {
+  uint16_t mv = (uint16_t)(voltage * 1000);
+  if (mv >= learned[0]) return 100;
+  if (mv <= learned[kCurvePoints - 1]) return 0;
+  for (int k = 0; k < kCurvePoints - 1; k++) {
+    if (mv <= learned[k] && mv >= learned[k + 1]) {
+      int span = learned[k] - learned[k + 1];
+      int frac = span ? (mv - learned[k + 1]) * 10 / span : 0;
+      return (kCurvePoints - 2 - k) * 10 + frac;
+    }
+  }
+  return 0;
+}
 
 int voltageToPercent(float voltage) {
+  if (haveLearned) return learnedPercent(voltage);
   if (voltage >= kCurve[0].voltage) {
     return 100;
   }
-  if (voltage <= kCurve[kCurvePoints - 1].voltage) {
+  if (voltage <= kCurve[kGenericPoints - 1].voltage) {
     return 0;
   }
-  for (int i = 0; i < kCurvePoints - 1; i++) {
+  for (int i = 0; i < kGenericPoints - 1; i++) {
     if (voltage <= kCurve[i].voltage && voltage >= kCurve[i + 1].voltage) {
       float span = kCurve[i].voltage - kCurve[i + 1].voltage;
       float t = (voltage - kCurve[i + 1].voltage) / span;
@@ -66,6 +86,11 @@ float lastRaw = 0;
 } // namespace
 
 void begin() {
+  Preferences prefs;
+  prefs.begin("battery", true);
+  haveLearned = prefs.getBytes("curve", learned, sizeof(learned)) == sizeof(learned);
+  learnedMinutes = prefs.getUInt("runmin", 0);
+  prefs.end();
   analogReadResolution(12);
   pinMode(BATTERY_ADC_PIN, INPUT);
 }
@@ -100,6 +125,21 @@ Reading read() {
 }
 
 float lastRawVoltage() { return lastRaw; }
+
+void setLearnedCurve(const uint16_t mv[kCurvePoints], uint32_t runMinutes) {
+  memcpy(learned, mv, sizeof(learned));
+  haveLearned = true;
+  learnedMinutes = runMinutes;
+  Preferences prefs;
+  prefs.begin("battery", false);
+  prefs.putBytes("curve", learned, sizeof(learned));
+  prefs.putUInt("runmin", runMinutes);
+  prefs.end();
+}
+
+bool hasLearnedCurve() { return haveLearned; }
+
+uint32_t learnedRunMinutes() { return learnedMinutes; }
 
 } // namespace battery
 } // namespace power

@@ -13,6 +13,7 @@
 #include "net/NetConfig.h"
 #include "net/SetupPortal.h"
 #include "power/Battery.h"
+#include "power/BatteryCal.h"
 #include "power/Power.h"
 #include "settings/Settings.h"
 #include "ui/Ui.h"
@@ -91,6 +92,10 @@ void applySetting(settings::Item item) {
     break;
   case settings::kSleepTimeout:
     power::setSleepTimeout(v);
+    break;
+  case settings::kBatteryCal:
+    power::batcal::setEnabled(v);
+    power::setStayAwake(v);
     break;
   case settings::kRecentPage:
     ui::setRecentEnabled(v);
@@ -252,14 +257,16 @@ void beginStatusServer() {
   statusServer.on("/status", HTTP_GET, []() {
     wiim::task::Diagnostics d = wiim::task::diagnostics();
     const power::BootInfo &boot = power::lastBoot();
-    char body[640];
+    char body[800];
     snprintf(body, sizeof(body),
              "{\"voltage\":%.3f,\"percent\":%d,\"usb_power\":%s,\"uptime_s\":%lu,"
              "\"heap_internal\":%u,\"heap_internal_min\":%u,\"heap_internal_largest\":%u,"
              "\"rssi\":%d,\"meta_ok\":%u,\"meta_failures\":%u,\"art_failures\":%u,"
              "\"meta_age_s\":%lu,\"cpu_mhz\":%lu,\"screen_on\":%s,"
              "\"boot\":{\"reason\":\"%s\",\"wake\":\"%s\",\"slept_s\":%lld,"
-             "\"sleep_voltage\":%.3f,\"sleep_reason\":\"%s\"}}\n",
+             "\"sleep_voltage\":%.3f,\"sleep_reason\":\"%s\"},"
+             "\"battery_cal\":{\"running\":%s,\"minutes\":%lu,\"learned_curve\":%s,"
+             "\"learned_run_min\":%lu}}\n",
              lastBattery.voltage, lastBattery.percent, lastBattery.externalPower ? "true" : "false",
              millis() / 1000, (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
              (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
@@ -267,7 +274,10 @@ void beginStatusServer() {
              d.metaFailures, d.artFailures, (millis() - d.lastMetaOkMs) / 1000,
              (unsigned long)getCpuFrequencyMhz(), power::isScreenOn() ? "true" : "false",
              boot.resetReason, boot.wakeSource, (long long)boot.sleptSeconds, boot.sleepVolts,
-             boot.sleepReason);
+             boot.sleepReason, power::batcal::enabled() ? "true" : "false",
+             (unsigned long)power::batcal::loggedMinutes(),
+             power::battery::hasLearnedCurve() ? "true" : "false",
+             (unsigned long)power::battery::learnedRunMinutes());
     String json = body;
     json.trim();
     json.remove(json.length() - 1); // reopen the object to append the log
@@ -491,6 +501,10 @@ void serviceBattery() {
   lastBattery = reading;
   ui::setBattery(reading.percent, reading.externalPower);
   if (reading.externalPower != onExternalPower) applyPowerSource(reading.externalPower);
+  if (power::batcal::sample(reading.voltage, reading.externalPower) == power::batcal::Result::kAborted) {
+    settings::set(settings::kBatteryCal, 0); // plugged in mid-run: the curve would be wrong
+    applySetting(settings::kBatteryCal);
+  }
 
   // Sleep before the cell runs flat, so it never just goes dark: three low readings in a row
   // (15s) rule out a one-off dip under load.
@@ -498,7 +512,15 @@ void serviceBattery() {
   lowReadings = (!reading.externalPower && reading.voltage < kLowBatteryVolts) ? lowReadings + 1 : 0;
   if (lowReadings >= 3) {
     power::noteActivity();
-    ui::showMessage("Battery low", "Charge me. Going to sleep...");
+    if (power::batcal::enabled()) {
+      bool learned = power::batcal::finish();
+      settings::set(settings::kBatteryCal, 0);
+      settings::saveNow();
+      ui::showMessage(learned ? "Battery calibrated" : "Calibration too short",
+                      "Charge me. Going to sleep...");
+    } else {
+      ui::showMessage("Battery low", "Charge me. Going to sleep...");
+    }
     display::refreshNow();
     delay(4000);
     power::sleepNow("Battery low");

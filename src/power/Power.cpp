@@ -19,6 +19,7 @@ bool screenOn = true;
 uint32_t screenTimeoutMs = (uint32_t)SCREEN_TIMEOUT_S * 1000;
 uint32_t sleepTimeoutMs = (uint32_t)DEEP_SLEEP_TIMEOUT_MIN * 60000UL;
 bool externalPower = false;
+bool stayAwake = false;
 bool dimmed = false;
 void (*screenCallback)(bool on) = nullptr;
 void (*beforeSleep)() = nullptr;
@@ -204,6 +205,7 @@ void noteActivity() {
 }
 
 void service() {
+  if (stayAwake) return;
   uint32_t idleMs = millis() - lastActivityMs;
   // On USB power the screen stays on, dimmed, where it would otherwise turn off.
   uint32_t dimAtMs = externalPower ? screenTimeoutMs
@@ -234,6 +236,11 @@ void setScreenCallback(void (*cb)(bool on)) { screenCallback = cb; }
 void setScreenTimeout(uint32_t seconds) { screenTimeoutMs = seconds * 1000; }
 
 void setSleepTimeout(uint32_t minutes) { sleepTimeoutMs = minutes * 60000UL; }
+
+void setStayAwake(bool on) {
+  stayAwake = on;
+  noteActivity();
+}
 
 void setExternalPower(bool on) {
   externalPower = on;

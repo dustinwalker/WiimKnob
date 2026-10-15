@@ -32,6 +32,7 @@ const Spec kSpecs[kCount] = {
     {"screen", "Screen off", OPTS(kScreenOpts), SCREEN_TIMEOUT_S},
     {"sleep", "Sleep", OPTS(kSleepOpts), DEEP_SLEEP_TIMEOUT_MIN},
     {"recent", "Recently played", OPTS(kOnOffOpts), 0}, // off: Roon and Connect sources leave nothing to save
+    {"batcal", "Calibrate battery", OPTS(kOnOffOpts), 0},
 };
 #undef OPTS
 
@@ -72,6 +73,7 @@ void format(Item item, char *buf, size_t len) {
     snprintf(buf, len, "%d min", v);
     break;
   case kRecentPage:
+  case kBatteryCal:
     snprintf(buf, len, "%s", v ? "On" : "Off");
     break;
   default:
@@ -90,6 +92,17 @@ bool step(Item item, int delta) {
   index[item] = next;
   dirtySinceMs = millis() | 1;
   return true;
+}
+
+void set(Item item, int v) {
+  index[item] = nearestIndex(kSpecs[item], v);
+  dirtySinceMs = millis() | 1;
+}
+
+void saveNow() {
+  if (!dirtySinceMs) return;
+  dirtySinceMs = (millis() - kSaveDelayMs) | 1; // due now
+  service();
 }
 
 void service() {
