@@ -17,6 +17,8 @@ struct Zone {
   String prevTitle; // the WiiM can still report this one for a poll after Roon moves on
   long seekS = -1;
   long lengthS = 0;
+  bool shuffle = false;
+  String loop; // disabled, loop, loop_one
 };
 
 // One row of the Library page. Fixed-size so a hundred of them can live in PSRAM.
@@ -26,8 +28,8 @@ struct Row {
   char imageKey[48];
 };
 
-enum class List { kHistory, kPlaylists, kRadio };
-constexpr int kListCount = 3;
+enum class List { kHistory, kPlaylists, kRadio, kQueue };
+constexpr int kListCount = 4;
 constexpr int kMaxRows = 100;
 
 // Call once Wi-Fi is up. deviceName tells knobs apart in Roon's Extensions list.
@@ -55,6 +57,8 @@ uint32_t listsVersion();
 // Non-blocking; the Roon task carries these out.
 void requestPlay(List which, int index);
 void requestControl(const char *control); // previous, next, playpause
+void requestToggleShuffle();
+void requestCycleRepeat(); // off, all, one
 void requestRefreshLists();
 
 String statusJson();

@@ -41,7 +41,7 @@ struct SpiRamAllocator : ArduinoJson::Allocator {
 } spiRam;
 
 struct Command {
-  enum Kind : uint8_t { kPlay, kControl, kRefresh } kind;
+  enum Kind : uint8_t { kPlay, kControl, kRefresh, kShuffle, kRepeat } kind;
   uint8_t list;
   int16_t index;
   char control[12];
@@ -75,6 +75,10 @@ volatile uint32_t versionCounter = 0;
 uint32_t nextRequestId = 0;
 uint32_t registerRequestId = UINT32_MAX;
 uint32_t zonesRequestId = UINT32_MAX;
+uint32_t queueRequestId = UINT32_MAX;
+String queueZoneId;
+uint32_t nextSubscriptionKey = 1;
+uint32_t *queueItemIds = nullptr;
 volatile bool sourceMatched = false;
 
 Row *rows[kListCount] = {};
@@ -313,6 +317,8 @@ void applyZone(JsonObject src) {
   z->imageKey = imageKey;
   z->seekS = np["seek_position"] | -1L;
   z->lengthS = np["length"] | 0L;
+  z->shuffle = src["settings"]["shuffle"] | false;
+  z->loop = src["settings"]["loop"] | "disabled";
   if (changed) {
     versionCounter++;
     if (hasOutput(*z, savedOutput)) noteHistory(*z);
@@ -331,6 +337,7 @@ void handleZones(const char *name, const uint8_t *body, size_t len) {
     zone["now_playing"]["three_line"] = true;
     zone["now_playing"]["seek_position"] = true;
     zone["now_playing"]["length"] = true;
+    zone["settings"] = true;
     filter["zones_added"][0] = zone;
     filter["zones_changed"][0] = zone;
     filter["zones_removed"] = true;
@@ -353,6 +360,50 @@ void handleZones(const char *name, const uint8_t *body, size_t len) {
       if (zones[i].zoneId == id) zones.erase(zones.begin() + i--);
     }
   }
+  xSemaphoreGive(mutex);
+}
+
+// Called with the mutex held.
+void setQueueRow(int i, JsonObject item) {
+  Row &r = rows[(int)List::kQueue][i];
+  copyField(r.title, sizeof(r.title), item["two_line"]["line1"] | "");
+  copyField(r.subtitle, sizeof(r.subtitle), item["two_line"]["line2"] | "");
+  copyField(r.imageKey, sizeof(r.imageKey), item["image_key"] | "");
+  queueItemIds[i] = item["queue_item_id"] | 0;
+}
+
+// Subscribed carries the whole queue; Changed carries remove/insert operations against it.
+void handleQueue(const char *name, const uint8_t *body, size_t len) {
+  JsonDocument doc(&spiRam);
+  if (deserializeJson(doc, body, len)) return;
+  Row *list = rows[(int)List::kQueue];
+  int &count = rowCount[(int)List::kQueue];
+  xSemaphoreTake(mutex, portMAX_DELAY);
+  if (strcmp(name, "Subscribed") == 0) {
+    count = 0;
+    for (JsonObject item : doc["items"].as<JsonArray>()) {
+      if (count >= kMaxRows) break;
+      setQueueRow(count++, item);
+    }
+  }
+  for (JsonObject change : doc["changes"].as<JsonArray>()) {
+    int at = constrain((int)(change["index"] | 0), 0, count);
+    if (strcmp(change["operation"] | "", "remove") == 0) {
+      int n = constrain((int)(change["count"] | 0), 0, count - at);
+      memmove(&list[at], &list[at + n], (count - at - n) * sizeof(Row));
+      memmove(&queueItemIds[at], &queueItemIds[at + n], (count - at - n) * sizeof(uint32_t));
+      count -= n;
+    } else if (strcmp(change["operation"] | "", "insert") == 0) {
+      JsonArray items = change["items"];
+      int n = min((int)items.size(), kMaxRows - at);
+      int keep = min(count - at, kMaxRows - at - n);
+      memmove(&list[at + n], &list[at], keep * sizeof(Row));
+      memmove(&queueItemIds[at + n], &queueItemIds[at], keep * sizeof(uint32_t));
+      for (int i = 0; i < n; i++) setQueueRow(at + i, items[i]);
+      count = at + n + keep;
+    }
+  }
+  listsVersionCounter++;
   xSemaphoreGive(mutex);
 }
 
@@ -410,6 +461,8 @@ void dispatch(const Parsed &m) {
     xQueueSend(commands, &refresh, 0);
   } else if (m.requestId == zonesRequestId) {
     handleZones(m.name.c_str(), m.body, m.bodyLen);
+  } else if (m.requestId == queueRequestId) {
+    handleQueue(m.name.c_str(), m.body, m.bodyLen);
   }
 }
 
@@ -536,7 +589,10 @@ void play(List which, int index) {
 
   JsonDocument doc(&spiRam);
   bool ok = false;
-  if (which == List::kHistory) {
+  if (which == List::kQueue) {
+    ok = call("com.roonlabs.transport:2/play_from_here",
+              String("{\"zone_or_output_id\":\"") + zoneId + "\",\"queue_item_id\":" + queueItemIds[index] + "}", doc);
+  } else if (which == List::kHistory) {
     // Roon keeps no history the API can reach, so a past track is found again by search.
     String artist = row.subtitle;
     int comma = artist.indexOf(',');
@@ -585,11 +641,40 @@ void runCommand(const Command &c) {
     refreshList(List::kPlaylists);
     refreshList(List::kRadio);
     break;
+  case Command::kShuffle:
+  case Command::kRepeat: {
+    Zone zone;
+    if (!sourceZone(zone)) break;
+    String json = String("{\"zone_or_output_id\":\"") + zone.zoneId + "\",";
+    json += c.kind == Command::kShuffle ? String("\"shuffle\":") + (zone.shuffle ? "false" : "true")
+                                        : String("\"loop\":\"next\"");
+    JsonDocument doc;
+    call("com.roonlabs.transport:2/change_settings", json + "}", doc);
+    break;
   }
+  }
+}
+
+// Follows the WiiM's zone: a new zone id (first match, or a regroup) means a new subscription.
+void followQueue() {
+  String zoneId = wiimZoneId();
+  if (zoneId == queueZoneId) return;
+  queueZoneId = zoneId;
+  xSemaphoreTake(mutex, portMAX_DELAY);
+  rowCount[(int)List::kQueue] = 0;
+  listsVersionCounter++;
+  xSemaphoreGive(mutex);
+  queueRequestId = UINT32_MAX;
+  if (zoneId.isEmpty()) return;
+  queueRequestId = sendRequest("com.roonlabs.transport:2/subscribe_queue",
+                               String("{\"zone_or_output_id\":\"") + zoneId + "\",\"max_item_count\":" + kMaxRows +
+                                   ",\"subscription_key\":" + nextSubscriptionKey++ + "}");
 }
 
 void disconnect() {
   ws.close();
+  queueZoneId = "";
+  queueRequestId = UINT32_MAX;
   xSemaphoreTake(mutex, portMAX_DELAY);
   zones.clear();
   xSemaphoreGive(mutex);
@@ -651,6 +736,7 @@ void taskFn(void *) {
       continue;
     }
     if (link == Link::kConnected) {
+      followQueue();
       Command c;
       while (xQueueReceive(commands, &c, 0) == pdTRUE) runCommand(c);
       if (millis() - lastListsMs > kListsRefreshMs) {
@@ -710,6 +796,7 @@ void begin(const String &deviceName) {
   mutex = xSemaphoreCreateMutex();
   commands = xQueueCreate(8, sizeof(Command));
   for (Row *&r : rows) r = (Row *)heap_caps_calloc(kMaxRows, sizeof(Row), MALLOC_CAP_SPIRAM);
+  queueItemIds = (uint32_t *)heap_caps_calloc(kMaxRows, sizeof(uint32_t), MALLOC_CAP_SPIRAM);
   loadState();
   loadHistory();
   xTaskCreatePinnedToCore(taskFn, "roon", 12288, nullptr, 1, nullptr, 0);
@@ -835,6 +922,16 @@ void requestControl(const char *control) {
   xQueueSend(commands, &c, 0);
 }
 
+void requestToggleShuffle() {
+  Command c = {Command::kShuffle, 0, 0, ""};
+  xQueueSend(commands, &c, 0);
+}
+
+void requestCycleRepeat() {
+  Command c = {Command::kRepeat, 0, 0, ""};
+  xQueueSend(commands, &c, 0);
+}
+
 void requestRefreshLists() {
   Command c = {Command::kRefresh, 0, 0, ""};
   xQueueSend(commands, &c, 0);
@@ -852,7 +949,7 @@ String statusJson() {
                 ",\"wiim_zone\":\"" + jsonEscape(zone) + "\",\"roon_is_source\":" +
                 (sourceMatched ? "true" : "false") + ",\"history\":" + rowCount[(int)List::kHistory] +
                 ",\"playlists\":" + rowCount[(int)List::kPlaylists] + ",\"radio\":" +
-                rowCount[(int)List::kRadio] + "}";
+                rowCount[(int)List::kRadio] + ",\"queue\":" + rowCount[(int)List::kQueue] + "}";
   xSemaphoreGive(mutex);
   return json;
 }
