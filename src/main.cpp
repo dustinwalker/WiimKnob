@@ -488,8 +488,16 @@ void applyPowerSource(bool external) {
   Serial.printf("[power] %s\n", external ? "USB power: staying awake" : "on battery");
 }
 
-constexpr float kLowBatteryVolts = 3.45f; // ~5% on the generic LiPo curve in Battery.cpp
-constexpr float kWakeMinVolts = 3.50f;    // above kLowBatteryVolts: no connecting only to hit the low sleep 15s later
+// Above the low cutoff, so a wake doesn't connect only to hit the low-battery sleep 15s later.
+constexpr float kWakeMarginVolts = 0.05f;
+
+void finishCalibration(const char *body) {
+  bool learned = power::batcal::finish();
+  settings::set(settings::kBatteryCal, 0);
+  settings::saveNow();
+  applySetting(settings::kBatteryCal);
+  ui::showMessage(learned ? "Battery calibrated" : "Calibration too short", body);
+}
 
 void serviceBattery() {
   uint32_t now = millis();
@@ -501,7 +509,13 @@ void serviceBattery() {
   lastBattery = reading;
   ui::setBattery(reading.percent, reading.externalPower);
   if (reading.externalPower != onExternalPower) applyPowerSource(reading.externalPower);
-  if (power::batcal::sample(reading.voltage, reading.externalPower) == power::batcal::Result::kAborted) {
+  power::batcal::Result cal = power::batcal::sample(reading.voltage, reading.externalPower);
+  if (cal == power::batcal::Result::kFinished) {
+    finishCalibration("Charging.");
+    display::refreshNow();
+    delay(3000);
+    ESP.restart(); // back to the normal pages with the new curve
+  } else if (cal == power::batcal::Result::kAborted) {
     settings::set(settings::kBatteryCal, 0); // plugged in mid-run: the curve would be wrong
     applySetting(settings::kBatteryCal);
   }
@@ -517,15 +531,11 @@ void serviceBattery() {
   // Sleep before the cell runs flat, so it never just goes dark: three low readings in a row
   // (15s) rule out a one-off dip under load.
   static int lowReadings = 0;
-  lowReadings = (!reading.externalPower && reading.voltage < kLowBatteryVolts) ? lowReadings + 1 : 0;
+  lowReadings = (!reading.externalPower && reading.voltage < power::battery::lowCutoffVolts()) ? lowReadings + 1 : 0;
   if (lowReadings >= 3) {
     power::noteActivity();
     if (power::batcal::enabled()) {
-      bool learned = power::batcal::finish();
-      settings::set(settings::kBatteryCal, 0);
-      settings::saveNow();
-      ui::showMessage(learned ? "Battery calibrated" : "Calibration too short",
-                      "Charge me. Going to sleep...");
+      finishCalibration("Charge me. Going to sleep...");
     } else {
       ui::showMessage("Battery low", "Charge me. Going to sleep...");
     }
@@ -573,7 +583,19 @@ void setup() {
   lastBatteryPollMs = millis();
   ui::setBattery(lastBattery.percent, lastBattery.externalPower);
   power::recordBoot(lastBattery.voltage);
-  if (!lastBattery.externalPower && lastBattery.voltage < kWakeMinVolts) {
+  bool lowNow = !lastBattery.externalPower &&
+                lastBattery.voltage < power::battery::lowCutoffVolts() + kWakeMarginVolts;
+  if (power::batcal::enabled() && power::batcal::loggedMinutes() &&
+      (lowNow || esp_reset_reason() == ESP_RST_BROWNOUT ||
+       power::batcal::endedEarlier(lastBattery.voltage, lastBattery.externalPower))) {
+    // The run ended in a reset rather than the low-battery sleep: save what it logged.
+    finishCalibration(lowNow ? "Charge me." : "Saved from the last run.");
+    display::tick();
+    delay(3000);
+    if (lowNow) power::sleepNow("Battery low");
+    ESP.restart(); // back to the normal pages with the new curve
+  }
+  if (lowNow) {
     // Woken (a knob bump, say) on a nearly flat cell: Wi-Fi's TX peaks could brown it out.
     ui::showMessage("Battery low", "Charge me.");
     display::tick();

@@ -27,6 +27,10 @@ float lastRawVoltage();
 constexpr int kCurvePoints = 11;
 void setLearnedCurve(const uint16_t mv[kCurvePoints], uint32_t runMinutes);
 bool hasLearnedCurve();
+// The low-battery shutdown point: learned from the calibration run (a little before where the
+// battery actually gave out), else 3.45V.
+float lowCutoffVolts();
+void setLearnedCutoff(uint16_t mv);
 uint32_t learnedRunMinutes();
 
 } // namespace battery

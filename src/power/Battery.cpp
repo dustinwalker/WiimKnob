@@ -27,6 +27,8 @@ constexpr int kGenericPoints = sizeof(kCurve) / sizeof(kCurve[0]);
 uint16_t learned[kCurvePoints] = {}; // mV at 100, 90, ... 0%
 bool haveLearned = false;
 uint32_t learnedMinutes = 0;
+constexpr uint16_t kDefaultCutoffMv = 3450; // ~5% on the generic curve
+uint16_t cutoffMv = kDefaultCutoffMv;
 
 int learnedPercent(float voltage) {
   uint16_t mv = (uint16_t)(voltage * 1000);
@@ -90,6 +92,7 @@ void begin() {
   prefs.begin("battery", true);
   haveLearned = prefs.getBytes("curve", learned, sizeof(learned)) == sizeof(learned);
   learnedMinutes = prefs.getUInt("runmin", 0);
+  cutoffMv = prefs.getUShort("cutoff", kDefaultCutoffMv);
   prefs.end();
   analogReadResolution(12);
   pinMode(BATTERY_ADC_PIN, INPUT);
@@ -140,6 +143,16 @@ void setLearnedCurve(const uint16_t mv[kCurvePoints], uint32_t runMinutes) {
 bool hasLearnedCurve() { return haveLearned; }
 
 uint32_t learnedRunMinutes() { return learnedMinutes; }
+
+float lowCutoffVolts() { return cutoffMv / 1000.0f; }
+
+void setLearnedCutoff(uint16_t mv) {
+  cutoffMv = mv;
+  Preferences prefs;
+  prefs.begin("battery", false);
+  prefs.putUShort("cutoff", mv);
+  prefs.end();
+}
 
 } // namespace battery
 } // namespace power

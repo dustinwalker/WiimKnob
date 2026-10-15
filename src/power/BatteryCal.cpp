@@ -10,9 +10,22 @@ namespace {
 constexpr const char *kLogPath = "/batcal.bin"; // one uint16 mV per minute, appended
 constexpr uint32_t kSampleMs = 60000;
 constexpr uint32_t kMinMinutes = 30;
+constexpr uint16_t kNearEmptyMv = 3600; // last sample below this: the run got to the end
+constexpr uint16_t kRechargedMv = 150;  // reading this far above it: charged since
 bool on = false;
 uint32_t lastSampleMs = 0;
 uint32_t minutes = 0;
+
+uint16_t lastLoggedMv() {
+  if (!minutes || !LittleFS.begin(true)) return 0;
+  File f = LittleFS.open(kLogPath, "r");
+  if (!f || f.size() < 2) return 0;
+  uint16_t mv = 0;
+  f.seek(f.size() - 2);
+  f.read((uint8_t *)&mv, 2);
+  f.close();
+  return mv;
+}
 
 void discard() {
   if (LittleFS.begin(true)) LittleFS.remove(kLogPath);
@@ -46,6 +59,8 @@ Result sample(float volts, bool externalPower) {
   if (!on) return Result::kNone;
   if (externalPower) {
     if (minutes == 0) return Result::kNone; // not unplugged yet: wait
+    uint16_t last = lastLoggedMv();
+    if (last && last < kNearEmptyMv) return finish() ? Result::kFinished : Result::kAborted;
     discard();
     on = false;
     return Result::kAborted;
@@ -61,6 +76,11 @@ Result sample(float volts, bool externalPower) {
   f.close();
   minutes++;
   return Result::kNone;
+}
+
+bool endedEarlier(float volts, bool externalPower) {
+  uint16_t last = lastLoggedMv();
+  return on && last && last < kNearEmptyMv && (externalPower || volts * 1000 > last + kRechargedMv);
 }
 
 bool finish() {
@@ -87,6 +107,10 @@ bool finish() {
       if (k && curve[k] > curve[k - 1]) curve[k] = curve[k - 1];
     }
     battery::setLearnedCurve(curve, n);
+    // Shut down ~3% of the run before where it actually gave out, so "Battery low" comes with
+    // charge to spare instead of a brownout.
+    size_t at = n - 1 - max<size_t>(1, n * 3 / 100);
+    battery::setLearnedCutoff(log[at]);
   }
   free(log);
   discard();
