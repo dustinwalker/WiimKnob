@@ -20,6 +20,12 @@ int rowCounts[kTabs];
 lv_obj_t *emptyLabel;
 int currentTab = 0;
 
+// LVGL still sends CLICKED at the end of a page swipe that started on a row.
+bool wasSwipe() {
+  lv_indev_t *indev = lv_indev_get_act();
+  return indev && lv_indev_get_gesture_dir(indev) != LV_DIR_NONE;
+}
+
 void showTab(int tab) {
   currentTab = tab;
   for (int i = 0; i < kTabs; i++) {
@@ -33,12 +39,14 @@ void showTab(int tab) {
 }
 
 void onTabClicked(lv_event_t *e) {
+  if (wasSwipe()) return;
   int tab = (int)(intptr_t)lv_event_get_user_data(e);
   showTab(tab);
   if (callbacks.onLibraryTab) callbacks.onLibraryTab(tab);
 }
 
 void onRowClicked(lv_event_t *e) {
+  if (wasSwipe()) return;
   int packed = (int)(intptr_t)lv_event_get_user_data(e);
   if (callbacks.onLibraryItem) callbacks.onLibraryItem(packed / 1000, packed % 1000);
 }
