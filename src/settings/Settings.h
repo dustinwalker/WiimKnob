@@ -6,12 +6,13 @@
 // steps through a fixed list of values; defaults come from Config.h.
 namespace settings {
 
-enum Item { kBrightness, kControlsTimeout, kScreenTimeout, kSleepTimeout, kRecentPage, kBatteryCal, kCount };
+enum Item { kBrightness, kControlsTimeout, kScreenTimeout, kSleepTimeout, kRecentPage, kBatteryCal, kRoonZone, kCount };
 
 void begin();
 
 int value(Item item); // percent, seconds, seconds, minutes, 0/1
 const char *label(Item item);
+bool isToggle(Item item); // on/off: a tap flips it
 void format(Item item, char *buf, size_t len);
 
 // Moves item delta steps through its list (clamped). Returns whether the value changed.

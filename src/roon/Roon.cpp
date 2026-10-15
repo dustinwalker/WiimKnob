@@ -14,6 +14,7 @@
 #include <freertos/semphr.h>
 #include <freertos/task.h>
 #include <time.h>
+#include <algorithm>
 #include <vector>
 
 namespace roon {
@@ -67,6 +68,8 @@ String extensionId;
 String displayName;
 String token;
 String savedOutput;
+String pinnedOutput; // set from Settings; empty means learn it
+String pinnedName;
 std::vector<Zone> zones;
 volatile uint32_t versionCounter = 0;
 uint32_t nextRequestId = 0;
@@ -86,6 +89,9 @@ void loadState() {
   // A token belongs to one extension id, so a renamed extension starts over with approval.
   token = prefs.getString("extid", "") == extensionId ? prefs.getString("token", "") : String();
   savedOutput = prefs.getString("output", "");
+  pinnedOutput = prefs.getString("pin", "");
+  pinnedName = prefs.getString("pinname", "");
+  if (pinnedOutput.length()) savedOutput = pinnedOutput;
   coreIp.fromString(prefs.getString("host", ""));
   corePort = prefs.getUShort("port", 0);
   prefs.end();
@@ -730,7 +736,7 @@ bool zoneForWiim(const String &wiimTitle, Zone &out) {
   const Zone *match = nullptr;
   int matches = 0;
   for (const Zone &z : zones) {
-    if (z.title == wiimTitle) {
+    if (pinnedOutput.isEmpty() && z.title == wiimTitle) {
       match = &z;
       matches++;
     }
@@ -762,6 +768,43 @@ bool sourceZone(Zone &out) {
   }
   xSemaphoreGive(mutex);
   return found;
+}
+
+String zoneChoiceLabel() {
+  if (pinnedOutput.isEmpty() || !mutex) return "Automatic";
+  xSemaphoreTake(mutex, portMAX_DELAY);
+  String name = pinnedName;
+  for (const Zone &z : zones) {
+    if (hasOutput(z, pinnedOutput)) name = z.name;
+  }
+  xSemaphoreGive(mutex);
+  return name;
+}
+
+void stepZoneChoice(int delta) {
+  if (!mutex) return;
+  xSemaphoreTake(mutex, portMAX_DELAY);
+  std::vector<const Zone *> sorted;
+  for (const Zone &z : zones) sorted.push_back(&z);
+  std::sort(sorted.begin(), sorted.end(), [](const Zone *a, const Zone *b) { return a->name < b->name; });
+  int current = 0;
+  for (size_t i = 0; i < sorted.size(); i++) {
+    if (hasOutput(*sorted[i], pinnedOutput)) current = i + 1;
+  }
+  int next = constrain(current + delta, 0, (int)sorted.size());
+  if (next == current) {
+    xSemaphoreGive(mutex);
+    return;
+  }
+  pinnedOutput = next ? firstOutput(*sorted[next - 1]) : String();
+  pinnedName = next ? sorted[next - 1]->name : String();
+  if (pinnedOutput.length()) savedOutput = pinnedOutput;
+  sourceMatched = false;
+  xSemaphoreGive(mutex);
+  saveString("pin", pinnedOutput);
+  saveString("pinname", pinnedName);
+  if (pinnedOutput.length()) saveString("output", pinnedOutput);
+  versionCounter++; // re-check the source against the new zone
 }
 
 String imageUrl(const String &imageKey, int size) {

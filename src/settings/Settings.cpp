@@ -24,6 +24,7 @@ const int kControlsOpts[] = {3, 5, 8, 10, 15, 20, 30};
 const int kScreenOpts[] = {20, 30, 45, 70, 90, 120, 180, 300};
 const int kSleepOpts[] = {2, 5, 10, 15, 30, 60};
 const int kOnOffOpts[] = {0, 1};
+const int kNoOpts[] = {0};
 
 #define OPTS(a) a, (int)(sizeof(a) / sizeof(a[0]))
 const Spec kSpecs[kCount] = {
@@ -33,6 +34,7 @@ const Spec kSpecs[kCount] = {
     {"sleep", "Sleep", OPTS(kSleepOpts), DEEP_SLEEP_TIMEOUT_MIN},
     {"recent", "Recently played", OPTS(kOnOffOpts), 0}, // off: Roon and Connect sources leave nothing to save
     {"batcal", "Calibrate battery", OPTS(kOnOffOpts), 0},
+    {"roonzone", "Roon zone", OPTS(kNoOpts), 0}, // the choice lives with the Roon module, keyed by output
 };
 #undef OPTS
 
@@ -62,6 +64,8 @@ void begin() {
 int value(Item item) { return kSpecs[item].options[index[item]]; }
 
 const char *label(Item item) { return kSpecs[item].label; }
+
+bool isToggle(Item item) { return kSpecs[item].options == kOnOffOpts; }
 
 void format(Item item, char *buf, size_t len) {
   int v = value(item);

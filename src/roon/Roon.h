@@ -42,6 +42,10 @@ bool zoneForWiim(const String &wiimTitle, Zone &out);
 bool sourceZone(Zone &out);
 String imageUrl(const String &imageKey, int size);
 
+// The Settings row: "Automatic" learns the zone from the WiiM's title; a named zone pins it.
+String zoneChoiceLabel();
+void stepZoneChoice(int delta);
+
 // Bumped on every track or cover change in any zone.
 uint32_t version();
 

@@ -129,6 +129,10 @@ void applySetting(settings::Item item) {
   default:
     break;
   }
+  if (item == settings::kRoonZone) {
+    ui::setSettingValue(item, roon::zoneChoiceLabel().c_str());
+    return;
+  }
   char text[16];
   settings::format(item, text, sizeof(text));
   ui::setSettingValue(item, text);
@@ -138,6 +142,8 @@ void onSettingTapped(int index) {
   selectedSetting = index;
   ui::setSelectedSetting(index);
   haptics::buzz();
+  settings::Item item = (settings::Item)index;
+  if (settings::isToggle(item) && settings::step(item, settings::value(item) ? -1 : 1)) applySetting(item);
 }
 
 // Describes a preset by what its routine changes, since that's all the WiiM stores about it
@@ -520,7 +526,10 @@ void serviceKnob() {
   bool screenWasOn = power::isScreenOn(); // a blind turn in the dark stays volume, not settings
   power::noteActivity();
   if (screenWasOn && ui::isSettingsActive()) {
-    if (settings::step((settings::Item)selectedSetting, delta)) {
+    if (selectedSetting == settings::kRoonZone) {
+      roon::stepZoneChoice(delta);
+      applySetting(settings::kRoonZone);
+    } else if (settings::step((settings::Item)selectedSetting, delta)) {
       applySetting((settings::Item)selectedSetting);
     }
     display::refreshNow();
@@ -707,6 +716,7 @@ void setup() {
 
   wiim::task::begin(netConfig.wiimHost);
   roon::begin(netConfig.wiimName.length() ? netConfig.wiimName : netConfig.wiimHost);
+  applySetting(settings::kRoonZone);
   roon::thumbs::begin();
 
   // A hung loop() would otherwise leave the screen lit until the battery dies; this reboots it
