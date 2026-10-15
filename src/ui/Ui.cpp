@@ -23,7 +23,7 @@ constexpr uint32_t kButtonColor = 0x2a2a2a;
 constexpr uint32_t kBadgeColor = 0x333333;
 constexpr uint32_t kBatteryGreen = 0x639922;
 
-bool pageEnabled[kScreenCount] = {true, true, true, true, true};
+bool pageEnabled[kScreenCount] = {true, false, true, true, true, true};
 lv_obj_t *pageDots[kScreenCount][kScreenCount] = {};
 
 // Now playing: full-screen art. A tap, a knob turn or waking the screen brings the controls up
@@ -809,6 +809,7 @@ void begin(const Callbacks &cbs) {
   makePageDots(pres, kPresets);
 
   buildSettingsScreens();
+  buildLibraryScreen();
 
   layoutPageDots();
   lv_scr_load(screens[kNowPlaying]);
@@ -882,6 +883,14 @@ void setPresets(const PresetTile *tiles, int count) {
     lv_obj_add_flag(presetEmptyLabel, LV_OBJ_FLAG_HIDDEN);
   }
 }
+
+void setLibraryEnabled(bool enabled) {
+  if (pageEnabled[kLibrary] == enabled) return;
+  pageEnabled[kLibrary] = enabled;
+  layoutPageDots();
+}
+
+void showNowPlaying() { goToScreen(kNowPlaying, false); }
 
 void setRecentEnabled(bool enabled) {
   if (pageEnabled[kRecent] == enabled) return;

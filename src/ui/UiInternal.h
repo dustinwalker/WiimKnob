@@ -23,11 +23,12 @@ constexpr uint32_t kAccentColor = 0xE53935;
 
 // Swipe order, left to right. Boots on now playing.
 constexpr int kNowPlaying = 0;
-constexpr int kRecent = 1;
-constexpr int kPresets = 2;
-constexpr int kSettings = 3;
-constexpr int kNetwork = 4;
-constexpr int kScreenCount = 5;
+constexpr int kLibrary = 1;
+constexpr int kRecent = 2;
+constexpr int kPresets = 3;
+constexpr int kSettings = 4;
+constexpr int kNetwork = 5;
+constexpr int kScreenCount = 6;
 
 extern Callbacks callbacks;
 extern lv_obj_t *screens[kScreenCount];
@@ -35,6 +36,7 @@ extern int activeScreen;
 
 void makePageDots(lv_obj_t *parent, int page);
 void buildSettingsScreens(); // UiSettings.cpp; called from begin()
+void buildLibraryScreen();   // UiLibrary.cpp; called from begin()
 
 } // namespace detail
 } // namespace ui

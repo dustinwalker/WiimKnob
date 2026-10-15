@@ -12,6 +12,19 @@ struct Callbacks {
   void (*onRecent)(int id);  // RecentTile::id of the tapped album
   void (*onSettingTapped)(int index);
   void (*onWifiSetup)(); // held, not tapped: it restarts the knob into setup mode
+  void (*onLibraryItem)(int tab, int index);
+  void (*onLibraryTab)(int tab);
+};
+
+// Library page tabs, in order.
+constexpr int kLibraryHistory = 0;
+constexpr int kLibraryPlaylists = 1;
+constexpr int kLibraryRadio = 2;
+
+struct LibraryRow {
+  const char *title;
+  const char *subtitle;
+  const lv_img_dsc_t *thumb; // nullptr shows a blank square until setLibraryThumb()
 };
 
 enum class PresetIcon { kDisc, kHeadphones, kEq, kMusic };
@@ -72,6 +85,12 @@ void setSettingValue(int index, const char *text);
 void setSelectedSetting(int index);
 bool isSettingsActive();
 void setRecentEnabled(bool enabled);
+
+// Library page (Roon history, playlists and radio): hidden until Roon has approved the knob.
+void setLibraryEnabled(bool enabled);
+void setLibraryRows(int tab, const LibraryRow *rows, int count); // text is copied
+void setLibraryThumb(int tab, int index, const lv_img_dsc_t *thumb);
+void showNowPlaying();
 
 // Network page: read-only status plus a hold-to-start Wi-Fi setup button.
 void setNetworkInfo(const char *ssid, const char *ip, const char *signal, const char *wiim);
