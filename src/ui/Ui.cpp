@@ -40,8 +40,6 @@ bool progressPlaying = false;
 lv_obj_t *skipFlash = nullptr; // big prev/next icon after a swipe on the art
 lv_obj_t *skipFlashIcon = nullptr;
 lv_obj_t *skipSpinner = nullptr;
-lv_obj_t *artSpinner = nullptr; // over the dimmed art while the new cover loads
-bool artPendingNow = false;
 bool skipPending = false; // waiting for the WiiM to report the track a skip asked for
 bool skipWasPrevious = false;
 uint32_t skipStartedMs = 0;
@@ -84,7 +82,6 @@ constexpr int kBattIconW = 32, kBattIconH = 18;
 constexpr int kBattFillMaxW = kBattIconW - 6; // inset from the outline's border
 
 void startSkip(bool next);
-void updateArtSpinner();
 
 void onPrevClicked(lv_event_t *e) {
   (void)e;
@@ -130,7 +127,12 @@ void goToScreen(int index, bool forward) {
 void setArtOn(lv_obj_t *img, const lv_img_dsc_t *art, int coverSize);
 
 constexpr uint32_t kControlsFadeMs = 500;
-constexpr lv_opa_t kArtPendingDim = 190; // ~75% black over the old cover while the new one loads
+// Black over the old cover while the new one loads: down to the top of a slow pulse, then
+// breathing between the two.
+constexpr lv_opa_t kArtPendingDim = 205;  // 80%
+constexpr lv_opa_t kArtPulseLight = 166;  // 65%
+constexpr lv_opa_t kArtPulseStep = 8;     // ~5 levels each way: a few full-screen redraws a second
+constexpr uint32_t kArtPulseHalfMs = 750;
 
 void applyArt() {
   setArtOn(artImg, tintedArt ? tintedArt : plainArt, 360);
@@ -152,7 +154,6 @@ void progressTimerCb(lv_timer_t *) {
 }
 
 void onControlsFadedOut(lv_anim_t *) {
-  updateArtSpinner();
   lv_obj_add_flag(controlsLayer, LV_OBJ_FLAG_HIDDEN);
   if (progressDurationMs > 0) {
     updateProgressArc();
@@ -172,7 +173,6 @@ void setControlsShown(bool shown) {
     lv_obj_add_flag(progressArc, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(frontImg, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(controlsLayer, LV_OBJ_FLAG_HIDDEN);
-    updateArtSpinner();
     return;
   }
   // Only the image's own opacity animates, which LVGL blends directly; fading the controls
@@ -205,20 +205,9 @@ void onArtTapped(lv_event_t *e) {
   setControlsShown(!controlsShown);
 }
 
-// Hidden under the controls (the volume number owns the centre) and while the skip flash, which
-// has its own ring, is up.
-void updateArtSpinner() {
-  if (artPendingNow && !controlsShown && !skipPending) {
-    lv_obj_clear_flag(artSpinner, LV_OBJ_FLAG_HIDDEN);
-  } else {
-    lv_obj_add_flag(artSpinner, LV_OBJ_FLAG_HIDDEN);
-  }
-}
-
 void endSkip() {
   if (!skipPending) return;
   skipPending = false;
-  updateArtSpinner();
   lv_obj_set_style_text_opa(titleLabel, LV_OPA_COVER, 0);
   lv_obj_set_style_text_opa(artistLabel, LV_OPA_COVER, 0);
   lv_obj_add_flag(skipSpinner, LV_OBJ_FLAG_HIDDEN);
@@ -229,7 +218,6 @@ void endSkip() {
 // until the new track's metadata arrives -- the WiiM can take a second or two to switch.
 void startSkip(bool next) {
   skipPending = true;
-  updateArtSpinner();
   skipWasPrevious = !next;
   skipStartedMs = lv_tick_get();
   if (controlsShown) {
@@ -538,17 +526,6 @@ void begin(const Callbacks &cbs) {
   lv_obj_clear_flag(skipSpinner, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_flag(skipSpinner, LV_OBJ_FLAG_HIDDEN);
   lv_timer_create(skipTimerCb, 250, NULL);
-
-  artSpinner = lv_spinner_create(np, 900, 70);
-  lv_obj_set_size(artSpinner, 90, 90);
-  lv_obj_center(artSpinner);
-  lv_obj_set_style_arc_width(artSpinner, 3, LV_PART_MAIN);
-  lv_obj_set_style_arc_width(artSpinner, 3, LV_PART_INDICATOR);
-  lv_obj_set_style_arc_opa(artSpinner, LV_OPA_TRANSP, LV_PART_MAIN);
-  lv_obj_set_style_arc_color(artSpinner, lv_color_white(), LV_PART_INDICATOR);
-  lv_obj_set_style_arc_opa(artSpinner, LV_OPA_80, LV_PART_INDICATOR);
-  lv_obj_clear_flag(artSpinner, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_add_flag(artSpinner, LV_OBJ_FLAG_HIDDEN);
 
   tickerPill = lv_obj_create(np);
   lv_obj_set_size(tickerPill, 240, 34);
@@ -928,6 +905,25 @@ void artDimCb(void *, int32_t v) {
   lv_obj_set_style_img_recolor_opa(artImg, v, 0);
   lv_obj_set_style_img_recolor_opa(frontImg, v, 0);
 }
+
+// Each recolor change redraws the whole screen, so the pulse only moves in coarse steps.
+void artPulseCb(void *, int32_t v) {
+  lv_opa_t q = v - v % kArtPulseStep;
+  if (lv_obj_get_style_img_recolor_opa(artImg, LV_PART_MAIN) != q) artDimCb(nullptr, q);
+}
+
+void startArtPulse(lv_anim_t * = nullptr) {
+  lv_anim_t a;
+  lv_anim_init(&a);
+  lv_anim_set_var(&a, artImg);
+  lv_anim_set_exec_cb(&a, artPulseCb);
+  lv_anim_set_values(&a, kArtPendingDim, kArtPulseLight);
+  lv_anim_set_time(&a, kArtPulseHalfMs);
+  lv_anim_set_playback_time(&a, kArtPulseHalfMs);
+  lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
+  lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
+  lv_anim_start(&a);
+}
 } // namespace
 
 void setArtPending(bool pending) {
@@ -935,16 +931,15 @@ void setArtPending(bool pending) {
   if (last == (int)pending) return;
   bool first = last < 0; // the boot cover: dim straight away, no flash of it at full brightness
   last = pending;
-  artPendingNow = pending;
-  updateArtSpinner();
   // Recolor, not opacity: frontImg's opacity belongs to the controls fade.
   lv_obj_set_style_img_recolor(artImg, lv_color_black(), 0);
   lv_obj_set_style_img_recolor(frontImg, lv_color_black(), 0);
   lv_opa_t from = lv_obj_get_style_img_recolor_opa(artImg, LV_PART_MAIN);
   lv_opa_t to = pending ? kArtPendingDim : LV_OPA_TRANSP;
-  lv_anim_del(artImg, artDimCb);
+  lv_anim_del(artImg, NULL); // a dim in progress, or the pulse
   if (first) {
     artDimCb(nullptr, to);
+    if (pending) startArtPulse();
     return;
   }
   // The new cover arrives in the same frame as the undim, so it fades up from the dimmed level.
@@ -955,6 +950,7 @@ void setArtPending(bool pending) {
   lv_anim_set_values(&a, from, to);
   lv_anim_set_time(&a, pending ? 150 : 400);
   lv_anim_set_path_cb(&a, pending ? lv_anim_path_linear : lv_anim_path_ease_out);
+  if (pending) lv_anim_set_ready_cb(&a, startArtPulse);
   lv_anim_start(&a);
 }
 
