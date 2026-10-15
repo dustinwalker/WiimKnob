@@ -74,6 +74,8 @@ void onRecent(int slot) {
 
 int selectedSetting = settings::kBrightness;
 
+void applyPollRates();
+
 void applySetting(settings::Item item) {
   int v = settings::value(item);
   switch (item) {
@@ -92,6 +94,7 @@ void applySetting(settings::Item item) {
   case settings::kRecentPage:
     ui::setRecentEnabled(v);
     wiim::task::setRecentCapture(v);
+    applyPollRates();
     if (v) lastSeenRecentVersion = lastRecentMetaVersion = UINT32_MAX; // rebuild the tiles skipped while hidden
     break;
   default:
@@ -375,13 +378,16 @@ constexpr uint32_t kExternalStatusPollMs = 500;
 // While the screen is dark on battery: poll less and drop the CPU to 80MHz (the lowest Wi-Fi
 // allows). 3s status polls still keep the command connection warm -- the WiiM drops idle
 // keep-alive after ~5-10s -- so a dark double-tap or knob turn goes out as fast as before.
+// Metadata stops entirely: its connection always goes cold between 10s polls, so each one was a
+// fresh TLS handshake, and nothing shows it in the dark. Waking requests a refresh.
 constexpr uint32_t kDarkStatusPollMs = 3000;
-constexpr uint32_t kDarkMetadataPollMs = 10000;
+constexpr uint32_t kDarkMetadataPollMs = 10000; // only while Recently played needs to record
 
 void applyPollRates() {
   bool dark = !power::isScreenOn() && !onExternalPower;
   wiim::task::setStatusPollMs(onExternalPower ? kExternalStatusPollMs : dark ? kDarkStatusPollMs : POLL_STATUS_MS);
-  wiim::task::setMetadataPollMs(dark ? kDarkMetadataPollMs : POLL_METADATA_MS);
+  uint32_t darkMeta = settings::value(settings::kRecentPage) ? kDarkMetadataPollMs : UINT32_MAX;
+  wiim::task::setMetadataPollMs(dark ? darkMeta : POLL_METADATA_MS);
   setCpuFrequencyMhz(dark ? 80 : 240);
 }
 
