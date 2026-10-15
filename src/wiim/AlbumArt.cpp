@@ -199,9 +199,8 @@ void dominantColor(const uint16_t *src, int stride, int side, uint8_t &r, uint8_
   b = bs / ws;
 }
 
-// The strongest hue rather than an average, which turns a red-and-blue cover into mud. Brought up
-// to full brightness and eased toward white so it reads over the art as a tint, not a paint job.
-// Near-gray covers get white.
+// The strongest hue rather than an average, which turns a red-and-blue cover into mud, at full
+// brightness. Near-gray covers get white.
 uint32_t accentColor(const uint16_t *src, int stride, int side) {
   constexpr int kBins = 12;
   uint32_t weight[kBins] = {}, rs[kBins] = {}, gs[kBins] = {}, bs[kBins] = {}, total = 0, samples = 0;
@@ -235,10 +234,6 @@ uint32_t accentColor(const uint16_t *src, int stride, int side) {
   r = r * 255 / mx;
   g = g * 255 / mx;
   b = b * 255 / mx;
-  constexpr uint32_t kWhite = 90; // of 256
-  r = (r * (256 - kWhite) + 255 * kWhite) >> 8;
-  g = (g * (256 - kWhite) + 255 * kWhite) >> 8;
-  b = (b * (256 - kWhite) + 255 * kWhite) >> 8;
   return (r << 16) | (g << 8) | b;
 }
 

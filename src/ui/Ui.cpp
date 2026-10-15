@@ -133,6 +133,7 @@ void goToScreen(int index, bool forward) {
 void setArtOn(lv_obj_t *img, const lv_img_dsc_t *art, int coverSize);
 
 constexpr uint32_t kControlsFadeMs = 500;
+constexpr int kProgressSteps = 3600; // a tenth of a degree, under a pixel at the ring's radius
 constexpr lv_opa_t kArtPendingDim = 179; // 70% black over the old cover while the new one loads
 
 void applyArt() {
@@ -147,7 +148,7 @@ void updateProgressArc() {
   if (progressDurationMs <= 0) return;
   long pos = progressBaseMs + (progressPlaying ? (long)lv_tick_elaps(progressBaseTick) : 0);
   if (pos > progressDurationMs) pos = progressDurationMs;
-  lv_arc_set_value(progressArc, (int)((int64_t)pos * 1000 / progressDurationMs)); // 32-bit overflows past ~35 min
+  lv_arc_set_value(progressArc, (int)((int64_t)pos * kProgressSteps / progressDurationMs)); // 32-bit overflows
 }
 
 void progressTimerCb(lv_timer_t *) {
@@ -525,18 +526,18 @@ void begin(const Callbacks &cbs) {
   lv_obj_center(progressArc);
   lv_arc_set_bg_angles(progressArc, 0, 360);
   lv_arc_set_rotation(progressArc, 270);
-  lv_arc_set_range(progressArc, 0, 1000);
+  lv_arc_set_range(progressArc, 0, kProgressSteps);
   lv_obj_remove_style(progressArc, NULL, LV_PART_KNOB);
   lv_obj_clear_flag(progressArc, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_set_style_arc_width(progressArc, 8, LV_PART_MAIN);
   lv_obj_set_style_arc_width(progressArc, 8, LV_PART_INDICATOR);
   lv_obj_set_style_arc_color(progressArc, lv_color_black(), LV_PART_MAIN);
-  lv_obj_set_style_arc_opa(progressArc, LV_OPA_40, LV_PART_MAIN);
+  lv_obj_set_style_arc_opa(progressArc, LV_OPA_70, LV_PART_MAIN);
   lv_obj_set_style_arc_color(progressArc, lv_color_white(), LV_PART_INDICATOR);
-  lv_obj_set_style_arc_opa(progressArc, LV_OPA_90, LV_PART_INDICATOR);
+  lv_obj_set_style_arc_opa(progressArc, LV_OPA_COVER, LV_PART_INDICATOR); // translucent caps double-blend into specks
   lv_obj_set_style_bg_opa(progressArc, LV_OPA_TRANSP, 0);
   lv_obj_add_flag(progressArc, LV_OBJ_FLAG_HIDDEN);
-  lv_timer_create(progressTimerCb, 1000, NULL);
+  lv_timer_create(progressTimerCb, 100, NULL); // unchanged values return early, so this is cheap
 
   skipFlash = lv_obj_create(np);
   lv_obj_set_size(skipFlash, 96, 96);
@@ -901,7 +902,10 @@ void setTrack(const char *title, const char *artist, const char *album) {
 void setAlbumArt(const lv_img_dsc_t *art, const lv_img_dsc_t *tinted, uint32_t accent) {
   plainArt = art;
   tintedArt = tinted;
-  lv_obj_set_style_arc_color(progressArc, lv_color_hex(accent), LV_PART_INDICATOR);
+  // Eased toward white so the fill reads as a tint, not paint; the track is the same hue, dark.
+  lv_color_t c = lv_color_hex(accent);
+  lv_obj_set_style_arc_color(progressArc, lv_color_mix(lv_color_white(), c, 90), LV_PART_INDICATOR);
+  lv_obj_set_style_arc_color(progressArc, lv_color_mix(c, lv_color_black(), 64), LV_PART_MAIN);
   if (!art) setControlsShown(true);
   applyArt();
 }
