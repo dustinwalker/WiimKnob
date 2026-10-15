@@ -40,6 +40,11 @@ bool progressPlaying = false;
 lv_obj_t *skipFlash = nullptr; // big prev/next icon after a swipe on the art
 lv_obj_t *skipFlashIcon = nullptr;
 lv_obj_t *skipSpinner = nullptr;
+// Three dots bouncing in turn over the dimmed art while the new cover loads.
+constexpr int kLoadingDots = 3;
+lv_obj_t *loadingDots = nullptr;
+lv_obj_t *loadingDot[kLoadingDots] = {};
+bool artPendingNow = false;
 bool skipPending = false; // waiting for the WiiM to report the track a skip asked for
 bool skipWasPrevious = false;
 uint32_t skipStartedMs = 0;
@@ -82,6 +87,7 @@ constexpr int kBattIconW = 32, kBattIconH = 18;
 constexpr int kBattFillMaxW = kBattIconW - 6; // inset from the outline's border
 
 void startSkip(bool next);
+void updateLoadingDots();
 
 void onPrevClicked(lv_event_t *e) {
   (void)e;
@@ -127,12 +133,7 @@ void goToScreen(int index, bool forward) {
 void setArtOn(lv_obj_t *img, const lv_img_dsc_t *art, int coverSize);
 
 constexpr uint32_t kControlsFadeMs = 500;
-// Black over the old cover while the new one loads: down to the top of a slow pulse, then
-// breathing between the two.
-constexpr lv_opa_t kArtPendingDim = 205;  // 80%
-constexpr lv_opa_t kArtPulseLight = 166;  // 65%
-constexpr lv_opa_t kArtPulseStep = 8;     // ~5 levels each way: a few full-screen redraws a second
-constexpr uint32_t kArtPulseHalfMs = 750;
+constexpr lv_opa_t kArtPendingDim = 179; // 70% black over the old cover while the new one loads
 
 void applyArt() {
   setArtOn(artImg, tintedArt ? tintedArt : plainArt, 360);
@@ -155,6 +156,7 @@ void progressTimerCb(lv_timer_t *) {
 
 void onControlsFadedOut(lv_anim_t *) {
   lv_obj_add_flag(controlsLayer, LV_OBJ_FLAG_HIDDEN);
+  updateLoadingDots();
   if (progressDurationMs > 0) {
     updateProgressArc();
     lv_obj_clear_flag(progressArc, LV_OBJ_FLAG_HIDDEN);
@@ -173,6 +175,7 @@ void setControlsShown(bool shown) {
     lv_obj_add_flag(progressArc, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(frontImg, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(controlsLayer, LV_OBJ_FLAG_HIDDEN);
+    updateLoadingDots();
     return;
   }
   // Only the image's own opacity animates, which LVGL blends directly; fading the controls
@@ -205,9 +208,42 @@ void onArtTapped(lv_event_t *e) {
   setControlsShown(!controlsShown);
 }
 
+void dotBounceCb(void *dot, int32_t v) { lv_obj_set_style_translate_y((lv_obj_t *)dot, -v, 0); }
+
+// Shown only over the bare art: the volume number owns the centre under the controls, and the
+// skip flash covers the moment before the new title arrives. The bounce runs only while shown.
+void updateLoadingDots() {
+  bool show = artPendingNow && !controlsShown && !skipPending;
+  if (show == !lv_obj_has_flag(loadingDots, LV_OBJ_FLAG_HIDDEN)) return;
+  for (int i = 0; i < kLoadingDots; i++) {
+    lv_anim_del(loadingDot[i], dotBounceCb);
+    lv_obj_set_style_translate_y(loadingDot[i], 0, 0);
+  }
+  if (!show) {
+    lv_obj_add_flag(loadingDots, LV_OBJ_FLAG_HIDDEN);
+    return;
+  }
+  lv_obj_clear_flag(loadingDots, LV_OBJ_FLAG_HIDDEN);
+  for (int i = 0; i < kLoadingDots; i++) {
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, loadingDot[i]);
+    lv_anim_set_exec_cb(&a, dotBounceCb);
+    lv_anim_set_values(&a, 0, 7);
+    lv_anim_set_time(&a, 280);
+    lv_anim_set_playback_time(&a, 280);
+    lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
+    lv_anim_set_repeat_delay(&a, 280);
+    lv_anim_set_delay(&a, i * 200); // one after another, a ripple around the triangle
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_start(&a);
+  }
+}
+
 void endSkip() {
   if (!skipPending) return;
   skipPending = false;
+  updateLoadingDots();
   lv_obj_set_style_text_opa(titleLabel, LV_OPA_COVER, 0);
   lv_obj_set_style_text_opa(artistLabel, LV_OPA_COVER, 0);
   lv_obj_add_flag(skipSpinner, LV_OBJ_FLAG_HIDDEN);
@@ -218,6 +254,7 @@ void endSkip() {
 // until the new track's metadata arrives -- the WiiM can take a second or two to switch.
 void startSkip(bool next) {
   skipPending = true;
+  updateLoadingDots();
   skipWasPrevious = !next;
   skipStartedMs = lv_tick_get();
   if (controlsShown) {
@@ -526,6 +563,29 @@ void begin(const Callbacks &cbs) {
   lv_obj_clear_flag(skipSpinner, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_flag(skipSpinner, LV_OBJ_FLAG_HIDDEN);
   lv_timer_create(skipTimerCb, 250, NULL);
+
+  loadingDots = lv_obj_create(np);
+  lv_obj_set_size(loadingDots, 60, 60);
+  lv_obj_center(loadingDots);
+  lv_obj_set_style_bg_opa(loadingDots, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(loadingDots, 0, 0);
+  lv_obj_set_style_pad_all(loadingDots, 0, 0);
+  lv_obj_clear_flag(loadingDots, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_clear_flag(loadingDots, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_flag(loadingDots, LV_OBJ_FLAG_HIDDEN);
+  static const int8_t kDotPos[kLoadingDots][2] = {{0, -8}, {-11, 11}, {11, 11}}; // a triangle
+  for (int i = 0; i < kLoadingDots; i++) {
+    lv_obj_t *dot = lv_obj_create(loadingDots);
+    lv_obj_set_size(dot, 12, 12);
+    lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(dot, lv_color_white(), 0);
+    lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(dot, 0, 0);
+    lv_obj_align(dot, LV_ALIGN_CENTER, kDotPos[i][0], kDotPos[i][1]);
+    lv_obj_clear_flag(dot, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(dot, LV_OBJ_FLAG_CLICKABLE);
+    loadingDot[i] = dot;
+  }
 
   tickerPill = lv_obj_create(np);
   lv_obj_set_size(tickerPill, 240, 34);
@@ -906,24 +966,6 @@ void artDimCb(void *, int32_t v) {
   lv_obj_set_style_img_recolor_opa(frontImg, v, 0);
 }
 
-// Each recolor change redraws the whole screen, so the pulse only moves in coarse steps.
-void artPulseCb(void *, int32_t v) {
-  lv_opa_t q = v - v % kArtPulseStep;
-  if (lv_obj_get_style_img_recolor_opa(artImg, LV_PART_MAIN) != q) artDimCb(nullptr, q);
-}
-
-void startArtPulse(lv_anim_t * = nullptr) {
-  lv_anim_t a;
-  lv_anim_init(&a);
-  lv_anim_set_var(&a, artImg);
-  lv_anim_set_exec_cb(&a, artPulseCb);
-  lv_anim_set_values(&a, kArtPendingDim, kArtPulseLight);
-  lv_anim_set_time(&a, kArtPulseHalfMs);
-  lv_anim_set_playback_time(&a, kArtPulseHalfMs);
-  lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
-  lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
-  lv_anim_start(&a);
-}
 } // namespace
 
 void setArtPending(bool pending) {
@@ -936,10 +978,11 @@ void setArtPending(bool pending) {
   lv_obj_set_style_img_recolor(frontImg, lv_color_black(), 0);
   lv_opa_t from = lv_obj_get_style_img_recolor_opa(artImg, LV_PART_MAIN);
   lv_opa_t to = pending ? kArtPendingDim : LV_OPA_TRANSP;
-  lv_anim_del(artImg, NULL); // a dim in progress, or the pulse
+  artPendingNow = pending;
+  updateLoadingDots();
+  lv_anim_del(artImg, artDimCb);
   if (first) {
     artDimCb(nullptr, to);
-    if (pending) startArtPulse();
     return;
   }
   // The new cover arrives in the same frame as the undim, so it fades up from the dimmed level.
@@ -950,7 +993,6 @@ void setArtPending(bool pending) {
   lv_anim_set_values(&a, from, to);
   lv_anim_set_time(&a, pending ? 150 : 400);
   lv_anim_set_path_cb(&a, pending ? lv_anim_path_linear : lv_anim_path_ease_out);
-  if (pending) lv_anim_set_ready_cb(&a, startArtPulse);
   lv_anim_start(&a);
 }
 
