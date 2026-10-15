@@ -211,21 +211,35 @@ the defaults come from `Config.h`.
 - **Dim**, 15 seconds before the screen turns off: a quarter of the set brightness. A touch on
   a dimmed screen only brightens it; it doesn't reach the controls.
 - **Screen off** (`SCREEN_TIMEOUT_S`, default 70s): the backlight turns off. Wi-Fi stays
-  connected and turning the knob still changes volume. While it's dark the knob polls the WiiM
-  every 3s (enough to keep the connection warm, so a command still goes out at once), reads
-  track info every 10s, and runs the CPU at 80MHz. A double-tap toggles play/pause and leaves
-  the screen off; a single tap wakes it to the art, a knob turn wakes it to the controls.
-- **Sleep** (`DEEP_SLEEP_TIMEOUT_MIN`, default 10 min): the whole board deep-sleeps, cutting
-  Wi-Fi and the CPU, which is the largest lever for battery life. A touch or knob turn wakes it
-  by pulsing one of three GPIOs the chip watches for while asleep (see `src/power/Power.cpp`).
-  Waking is a full reboot, so it takes a few seconds to reconnect.
+  connected and turning the knob still changes volume. While it's dark the knob polls play
+  state every 3s (enough to keep the connection warm, so a command still goes out at once),
+  stops reading track info (each read was a fresh TLS handshake; waking refreshes it), checks
+  touch every 20ms instead of 5ms, and runs the CPU at 80MHz. A double-tap toggles play/pause
+  and leaves the screen off; a single tap wakes it to the art, a knob turn wakes it to the
+  controls.
+- **Sleep** (`DEEP_SLEEP_TIMEOUT_MIN`, default 10 min): the board deep-sleeps, cutting Wi-Fi
+  and the CPU. A touch or knob turn wakes it by pulsing one of three GPIOs the chip watches
+  while asleep (see `src/power/Power.cpp`). Before sleeping, the panel controller goes into its
+  own sleep mode and the haptic driver into standby with its enable pin held low, and the
+  current cover is saved to flash (only if it changed). Waking is a full reboot: the saved
+  cover shows dimmed while it reconnects to the AP it used last (skipping the scan), and the
+  knob detent that woke it is applied as a volume step once the volume is known.
 - **On USB power** the knob stays awake: no screen-off or sleep (the screen dims instead), no
   modem sleep (which adds 100-400ms to every WiiM request), and status polls every 0.5s. That
   also keeps it reachable for over-the-air updates.
+- **Low battery:** below 3.45V for 15s it shows "Battery low" and sleeps; a wake below 3.5V goes
+  straight back to sleep without starting Wi-Fi.
+- **Wi-Fi unreachable at boot:** it offers setup for 30s (tap the screen), then sleeps and
+  retries after 5, 10, 20 and then every 30 minutes. The setup network only opens by itself when
+  no network has ever been saved.
 
-Deep sleep intentionally does not try to preserve any state (in-flight volume changes, current
-track, etc.) — the display and WiiM state just repopulate over the first second or two after
-wake, the same as a normal boot.
+The other chip on the board (the classic ESP32 running Waveshare's audio/Bluetooth firmware)
+keeps running through the S3's deep sleep, and nothing documented on the link between them
+can put it to sleep. It's the most likely drain on a battery left asleep overnight.
+
+`/status` shows the reason for the current boot and a 16-entry boot log kept in NVS (start
+reason, wake source, time asleep, voltage at sleep and at wake), which survives a flat battery.
+A loop watchdog (15s) reboots a hung firmware rather than leaving the screen lit.
 
 ## Haptics
 
