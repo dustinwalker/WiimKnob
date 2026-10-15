@@ -105,12 +105,21 @@ void onLibraryItem(int tab, int index) {
   pendingPlay.fromTitle = wiim::task::getMetadata().title;
   pendingPlay.startedMs = millis();
   ui::hideControlsNow();
-  ui::setTrack(row.title, tab == ui::kLibraryHistory ? row.subtitle : "");
+  bool track = tab == ui::kLibraryHistory || tab == ui::kLibraryQueue;
+  ui::setTrack(row.title, track ? row.subtitle : "");
   ui::setArtPending(true);
+}
+void onShuffle() {
+  roon::requestToggleShuffle();
+  haptics::buzz();
+}
+void onRepeat() {
+  roon::requestCycleRepeat();
+  haptics::buzz();
 }
 void onLibraryTab(int tab) {
   static uint32_t lastRefreshMs = 0;
-  if (tab != ui::kLibraryHistory && millis() - lastRefreshMs > 30000) {
+  if ((tab == ui::kLibraryPlaylists || tab == ui::kLibraryRadio) && millis() - lastRefreshMs > 30000) {
     lastRefreshMs = millis();
     roon::requestRefreshLists();
   }
@@ -458,6 +467,8 @@ void syncUiFromWiimTask() {
     lastRoonCheckMs = millis();
     roonSource = roon::sourceZone(roonZone) && roonZone.lengthS > 0;
   }
+  ui::setRoonModes(roonSource, roonZone.shuffle,
+                   roonZone.loop == "loop_one" ? 2 : roonZone.loop == "loop" ? 1 : 0);
   if (roonSource) {
     bool playing = roonZone.state == "playing";
     ui::setPlaying(playing);
@@ -677,7 +688,7 @@ void setup() {
   display::begin();
 
   ui::Callbacks callbacks = {onPrev, onNext, onPlayPause, onPreset, onRecent, onSettingTapped, onWifiSetup,
-                                onLibraryItem, onLibraryTab};
+                                onLibraryItem, onLibraryTab, onShuffle, onRepeat};
   ui::begin(callbacks);
 
   settings::begin();

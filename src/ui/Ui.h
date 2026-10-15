@@ -14,12 +14,15 @@ struct Callbacks {
   void (*onWifiSetup)(); // held, not tapped: it restarts the knob into setup mode
   void (*onLibraryItem)(int tab, int index);
   void (*onLibraryTab)(int tab);
+  void (*onShuffle)();
+  void (*onRepeat)();
 };
 
 // Library page tabs, in order.
 constexpr int kLibraryHistory = 0;
 constexpr int kLibraryPlaylists = 1;
 constexpr int kLibraryRadio = 2;
+constexpr int kLibraryQueue = 3;
 
 struct LibraryRow {
   const char *title;
@@ -91,6 +94,9 @@ void setLibraryEnabled(bool enabled);
 void setLibraryRows(int tab, const LibraryRow *rows, int count); // text is copied
 void setLibraryThumb(int tab, int index, const lv_img_dsc_t *thumb);
 void showNowPlaying();
+
+// Shuffle and repeat beside the battery icon, shown while Roon is the source. repeat: 0 off, 1 all, 2 one.
+void setRoonModes(bool show, bool shuffle, int repeat);
 
 // Network page: read-only status plus a hold-to-start Wi-Fi setup button.
 void setNetworkInfo(const char *ssid, const char *ip, const char *signal, const char *wiim);

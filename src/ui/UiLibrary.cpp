@@ -6,12 +6,15 @@ using namespace detail;
 
 namespace {
 
-constexpr int kTabs = 3;
+constexpr int kTabs = 4;
 constexpr int kMaxRows = 100;
 constexpr int kThumbSize = 48;
-const char *const kTabNames[kTabs] = {"History", "Playlists", "Radio"};
+// Indexed like roon::List; kTabOrder is how they sit on screen.
+const char *const kTabNames[kTabs] = {"History", "Playlists", "Radio", "Up next"};
 const char *const kEmptyText[kTabs] = {"Tracks you play from Roon will show up here",
-                                       "No playlists in Roon yet", "No stations in My Live Radio"};
+                                       "No playlists in Roon yet", "No stations in My Live Radio",
+                                       "Nothing queued in Roon"};
+const int kTabOrder[kTabs] = {0, 3, 1, 2};
 
 lv_obj_t *tabLabels[kTabs];
 lv_obj_t *lists[kTabs];
@@ -67,16 +70,29 @@ lv_obj_t *makeLabel(lv_obj_t *row, const char *text, uint32_t color, lv_align_t 
 void detail::buildLibraryScreen() {
   lv_obj_t *scr = screens[kLibrary];
 
-  for (int i = 0; i < kTabs; i++) {
-    lv_obj_t *tab = lv_label_create(scr);
-    lv_obj_set_style_text_font(tab, &lv_font_montserrat_16, 0);
+  lv_obj_t *tabRow = lv_obj_create(scr);
+  lv_obj_set_size(tabRow, 250, 28);
+  lv_obj_align(tabRow, LV_ALIGN_TOP_MID, 0, 40);
+  lv_obj_set_style_bg_opa(tabRow, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(tabRow, 0, 0);
+  lv_obj_set_style_pad_all(tabRow, 0, 0);
+  lv_obj_set_style_pad_column(tabRow, 14, 0);
+  lv_obj_set_flex_flow(tabRow, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(tabRow, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_clear_flag(tabRow, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_flag(tabRow, LV_OBJ_FLAG_GESTURE_BUBBLE);
+  for (int slot = 0; slot < kTabs; slot++) {
+    int i = kTabOrder[slot];
+    lv_obj_t *tab = lv_label_create(tabRow);
+    lv_obj_set_style_text_font(tab, &lv_font_montserrat_14, 0);
     lv_label_set_text(tab, kTabNames[i]);
-    lv_obj_align(tab, LV_ALIGN_TOP_MID, (i - 1) * 84, 44);
+    lv_obj_add_flag(tab, LV_OBJ_FLAG_GESTURE_BUBBLE);
     lv_obj_add_flag(tab, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_ext_click_area(tab, 12);
     lv_obj_add_event_cb(tab, onTabClicked, LV_EVENT_CLICKED, (void *)(intptr_t)i);
     tabLabels[i] = tab;
-
+  }
+  for (int i = 0; i < kTabs; i++) {
     lv_obj_t *list = lv_obj_create(scr);
     lv_obj_set_size(list, 276, 228);
     lv_obj_align(list, LV_ALIGN_TOP_MID, 0, 76);

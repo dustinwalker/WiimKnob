@@ -61,6 +61,9 @@ lv_obj_t *artistLabel = nullptr;
 lv_obj_t *playPauseIcon = nullptr;
 lv_obj_t *statusDot = nullptr;
 lv_obj_t *batteryBadge = nullptr;      // clickable: taps toggle icon <-> percent
+lv_obj_t *shuffleButton = nullptr;
+lv_obj_t *repeatButton = nullptr;
+lv_obj_t *repeatOneMark = nullptr;
 lv_obj_t *batteryIconOutline = nullptr;
 lv_obj_t *batteryIconNub = nullptr;
 lv_obj_t *batteryFill = nullptr;
@@ -103,6 +106,38 @@ void onNextClicked(lv_event_t *e) {
 void onPlayPauseClicked(lv_event_t *e) {
   (void)e;
   if (callbacks.onPlayPause) callbacks.onPlayPause();
+}
+
+bool endedInGesture() {
+  lv_indev_t *indev = lv_indev_get_act();
+  return indev && lv_indev_get_gesture_dir(indev) != LV_DIR_NONE;
+}
+
+void onShuffleClicked(lv_event_t *) {
+  if (!endedInGesture() && callbacks.onShuffle) callbacks.onShuffle();
+}
+
+void onRepeatClicked(lv_event_t *) {
+  if (!endedInGesture() && callbacks.onRepeat) callbacks.onRepeat();
+}
+
+lv_obj_t *makeModeButton(lv_obj_t *parent, int x, const char *symbol, lv_event_cb_t cb) {
+  lv_obj_t *button = lv_obj_create(parent);
+  lv_obj_set_size(button, 64, 56); // well past the 16px icon: it's a small target on a round screen
+  lv_obj_align(button, LV_ALIGN_CENTER, x, -122);
+  lv_obj_set_ext_click_area(button, 8);
+  lv_obj_set_style_bg_opa(button, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(button, 0, 0);
+  lv_obj_set_style_pad_all(button, 0, 0);
+  lv_obj_clear_flag(button, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_flag(button, LV_OBJ_FLAG_GESTURE_BUBBLE);
+  lv_obj_add_flag(button, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_add_event_cb(button, cb, LV_EVENT_CLICKED, NULL);
+  lv_obj_t *icon = lv_label_create(button);
+  lv_obj_set_style_text_font(icon, &lv_font_montserrat_16, 0);
+  lv_label_set_text(icon, symbol);
+  lv_obj_center(icon);
+  return button;
 }
 
 void onBatteryBadgeClicked(lv_event_t *e) {
@@ -652,6 +687,13 @@ void begin(const Callbacks &cbs) {
   lv_obj_add_flag(batteryBadge, LV_OBJ_FLAG_GESTURE_BUBBLE);
   lv_obj_add_event_cb(batteryBadge, onBatteryBadgeClicked, LV_EVENT_CLICKED, NULL);
 
+  shuffleButton = makeModeButton(ctrl, -62, LV_SYMBOL_SHUFFLE, onShuffleClicked);
+  repeatButton = makeModeButton(ctrl, 62, LV_SYMBOL_LOOP, onRepeatClicked);
+  repeatOneMark = lv_label_create(repeatButton);
+  lv_obj_set_style_text_font(repeatOneMark, &lv_font_montserrat_14, 0);
+  lv_label_set_text(repeatOneMark, "1");
+  lv_obj_align(repeatOneMark, LV_ALIGN_CENTER, 13, -8);
+
   batteryIconOutline = lv_obj_create(batteryBadge);
   lv_obj_set_size(batteryIconOutline, kBattIconW, kBattIconH);
   lv_obj_set_style_radius(batteryIconOutline, 3, 0);
@@ -891,6 +933,22 @@ void setLibraryEnabled(bool enabled) {
 }
 
 void showNowPlaying() { goToScreen(kNowPlaying, false); }
+
+void setRoonModes(bool show, bool shuffle, int repeat) {
+  static int last = -1;
+  int packed = show | shuffle << 1 | repeat << 2;
+  if (packed == last) return;
+  last = packed;
+  lv_obj_t *buttons[] = {shuffleButton, repeatButton};
+  for (lv_obj_t *b : buttons) {
+    if (show) lv_obj_clear_flag(b, LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_add_flag(b, LV_OBJ_FLAG_HIDDEN);
+  }
+  lv_obj_set_style_text_color(shuffleButton, lv_color_hex(shuffle ? 0xffffff : 0x5a5a5a), 0);
+  lv_obj_set_style_text_color(repeatButton, lv_color_hex(repeat ? 0xffffff : 0x5a5a5a), 0);
+  if (repeat == 2) lv_obj_clear_flag(repeatOneMark, LV_OBJ_FLAG_HIDDEN);
+  else lv_obj_add_flag(repeatOneMark, LV_OBJ_FLAG_HIDDEN);
+}
 
 void setRecentEnabled(bool enabled) {
   if (pageEnabled[kRecent] == enabled) return;
