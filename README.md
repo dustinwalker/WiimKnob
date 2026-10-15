@@ -51,8 +51,8 @@ the button for setting up Wi-Fi again.
   curve and sets the low-battery cutoff.
 - You can update it over Wi-Fi, and `http://wiimknob.local/status` shows Wi-Fi, memory,
   battery, the learned curve and a boot log.
-- Accented names like Beyoncé or Sigur Rós draw properly. The stock LVGL fonts only cover plain
-  ASCII, so this needed regenerated fonts.
+- Track names draw in most of the world's scripts: accented Latin, Vietnamese, Cyrillic, Greek,
+  Chinese, Japanese and Korean. The stock LVGL fonts only cover plain ASCII.
 
 ## Screenshots
 
@@ -395,12 +395,29 @@ The stock LVGL `lv_font_montserrat_16` and `_20` only include ASCII and the icon
 checked their compiled-in glyph tables. Any accented character, the é or ö or ñ in a track or
 artist name, had no glyph to draw.
 
-`src/ui/fonts/` has three replacements, `lv_font_montserrat_16_latin`, `_18_latin` and
-`_20_latin`, used for the title, artist and the scrolling band. They come from the same
-Montserrat-Medium.ttf that LVGL's own build uses, with the range extended to Latin-1 Supplement
-and Latin Extended-A, `0x20-0x7F,0xA0-0x17F,0x2022`. That covers French, German, Spanish,
-Nordic, Polish, Czech and most other Western and Central European text. Each file's header has
-the exact `lv_font_conv` command if you need Cyrillic or Greek.
+`scripts/make_fonts.py` builds the replacements in `src/ui/fonts/` as a chain. LVGL looks for
+each character in the first font and falls back to the next one when it's missing:
+
+1. `lv_font_montserrat_16_latin`, `_18_latin` and `_20_latin`, for the title, artist and the
+   scrolling band. They're the same Montserrat Medium LVGL ships, extended to Latin-1, Latin
+   Extended-A, Cyrillic and Vietnamese. The 16 and 20 also keep LVGL's FontAwesome icons.
+2. `lv_font_noto_greek_16`, `_18` and `_20`, the Greek letters from Noto Sans Medium.
+3. `lv_font_noto_cjk_18_1`, `_2` and `_3`, from Noto Sans CJK JP Medium. The first two split
+   about 7,200 Chinese characters between them,
+   the level-1 sets of GB2312, Big5 and JIS X 0208, so it covers common simplified, traditional
+   and Japanese text. The third has the 2,350 everyday Korean syllables, kana and full-width
+   punctuation. It's one font split three ways so each generated file stays under 5MB.
+
+English titles never touch the Noto fonts. There's only one CJK size, shared by all three
+labels, because each size costs about 1.2MB of flash. For the same reason it's the only
+compressed font, which is why `lv_conf.h` turns on `LV_USE_FONT_COMPRESSED`. With it, the
+firmware takes about 3.2MB of its 6.4MB slot.
+
+Chinese and Japanese share character codes, and some characters are drawn a little differently
+in each. The JP version of Noto draws them the Japanese way, which still reads fine as Chinese.
+
+The script downloads the Noto fonts into `.pio/fonts` on first run. It needs `npx` and a prior
+`pio run`, so the LVGL library with Montserrat is already in place.
 
 Two more generated fonts sit alongside them. `lv_font_montserrat_96_digits` has just 0-9 for the
 big volume readout, since LVGL's built-in fonts stop at 48px. `lv_font_preset_icons_26` has four
@@ -425,7 +442,9 @@ src/
                     and the recently played history
   ui/               the LVGL pages and gesture navigation (UiSettings.cpp: settings,
                     network and setup screens)
-    fonts/            regenerated fonts with accented-character support, plus icon fonts
+    fonts/            generated fonts for most scripts, plus icon fonts
+scripts/
+  make_fonts.py     regenerates the text fonts
 ```
 
 ## Ideas for next steps
@@ -438,8 +457,9 @@ src/
 - **Play/pause for Connect sources.** Qobuz Connect reports "none" whether it's playing or
   paused, so the knob guesses from whether the track position is moving. The icon catches up
   about 2 seconds after a pause. Other Connect sources may do the same.
-- **More scripts.** The fonts cover Western and Central European accents but not Cyrillic,
-  Greek or CJK. Extending the `lv_font_conv` range would add them.
+- **Rare characters.** The CJK font only holds the common sets, so an uncommon character in a
+  name shows as a blank. Arabic, Hebrew, Thai and the Indic scripts aren't covered at all, and
+  Arabic and Hebrew would also need right-to-left layout.
 
 ## Credits
 
