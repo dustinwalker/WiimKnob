@@ -277,21 +277,42 @@ void beginStatusServer() {
 
 net::Config netConfig;
 
+// The AP and channel last joined, kept through deep sleep so a wake can skip the scan.
+RTC_DATA_ATTR uint8_t rtcBssid[6] = {};
+RTC_DATA_ATTR int32_t rtcChannel = 0;
+constexpr uint32_t kFastJoinMs = 6000;
+
 bool connectWiFi(uint32_t timeoutMs) {
   WiFi.mode(WIFI_STA);
-  WiFi.begin(netConfig.ssid.c_str(), netConfig.password.c_str());
-  Serial.printf("Connecting to Wi-Fi '%s'...\n", netConfig.ssid.c_str());
+  // Strongest AP rather than the first heard: with a mesh at weak RSSI it can be 10dB+ better.
+  WiFi.setScanMethod(WIFI_ALL_CHANNEL_SCAN);
+  WiFi.setSortMethod(WIFI_CONNECT_AP_BY_SIGNAL);
+  bool fast = rtcChannel > 0 && esp_reset_reason() == ESP_RST_DEEPSLEEP;
+  if (fast) {
+    WiFi.begin(netConfig.ssid.c_str(), netConfig.password.c_str(), rtcChannel, rtcBssid);
+  } else {
+    WiFi.begin(netConfig.ssid.c_str(), netConfig.password.c_str());
+  }
+  Serial.printf("Connecting to Wi-Fi '%s'%s...\n", netConfig.ssid.c_str(), fast ? " (cached AP)" : "");
   ui::setBootStatus("Connecting to Wi-Fi...");
   display::tick();
   uint32_t started = millis();
   while (WiFi.status() != WL_CONNECTED) {
+    if (fast && millis() - started > kFastJoinMs) { // the cached AP moved or went away: full scan
+      fast = false;
+      WiFi.disconnect();
+      WiFi.begin(netConfig.ssid.c_str(), netConfig.password.c_str());
+    }
     if (millis() - started > timeoutMs) {
       Serial.println("\nCouldn't connect");
+      rtcChannel = 0;
       return false;
     }
     display::tick();
     delay(50);
   }
+  memcpy(rtcBssid, WiFi.BSSID(), 6);
+  rtcChannel = WiFi.channel();
   Serial.printf("\nConnected, IP: %s\n", WiFi.localIP().toString().c_str());
   ui::setBootStatus("Finding your WiiM...");
   return true;
