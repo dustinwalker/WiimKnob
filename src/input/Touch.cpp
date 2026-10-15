@@ -12,6 +12,7 @@ constexpr uint8_t kTouchAddr = 0x15;
 
 void Touch::begin() {
   Wire.begin(PIN_TOUCH_SDA, PIN_TOUCH_SCL);
+  Wire.setClock(400000); // CST816D and DRV2605L both do fast-mode; ~4x less bus time per read
 
   pinMode(PIN_TOUCH_RST, OUTPUT);
   digitalWrite(PIN_TOUCH_RST, LOW);

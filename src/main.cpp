@@ -586,5 +586,7 @@ void loop() {
   ArduinoOTA.handle();
   statusServer.handleClient();
 
-  delay(5);
+  // Dark, nothing renders: 20ms still catches a tap (the double-tap window is 350ms) at a
+  // quarter of the touch reads and wakeups.
+  delay(power::isScreenOn() ? 5 : 20);
 }
