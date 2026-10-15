@@ -31,7 +31,7 @@ RTC_DATA_ATTR int64_t rtcSleepAtS = 0;
 RTC_DATA_ATTR char rtcSleepReason[24] = "";
 BootInfo bootInfo;
 esp_reset_reason_t bootReset = ESP_RST_UNKNOWN;
-uint8_t bootWake = 0; // 0 none, 1 knob, 2 touch, 3 unknown
+uint8_t bootWake = 0; // 0 none, 1 knob, 2 touch, 3 timer
 
 // The last few boots, in NVS so they survive a flat battery (the RTC fields above don't).
 struct BootLogEntry {
@@ -41,7 +41,7 @@ struct BootLogEntry {
   uint16_t bootMv;
   uint8_t reset;     // esp_reset_reason_t
   uint8_t wake;
-  uint8_t sleepWhy;  // 0 none, 1 idle timeout, 2 battery low, 3 other
+  uint8_t sleepWhy;  // 0 none/other, 1 idle timeout, 2 battery low, 3 no Wi-Fi
   uint8_t unused;
 };
 constexpr int kBootLogSize = 16;
@@ -66,8 +66,9 @@ const char *resetReasonName(esp_reset_reason_t r) {
   }
 }
 
-void enterDeepSleep(const char *reason) {
+void enterDeepSleep(const char *reason, uint32_t wakeAfterS = 0) {
   display::setBacklightOn(false);
+  if (wakeAfterS) esp_sleep_enable_timer_wakeup((uint64_t)wakeAfterS * 1000000ULL);
 
   // Wake on the same GPIOs the knob and touch controller already pulse low during normal
   // operation (see Pins.h) -- no extra wiring or wake button needed. ANY_LOW: wake as soon as
@@ -114,8 +115,11 @@ void begin() {
   bootInfo.wakeSource = "none";
   if (reset == ESP_RST_DEEPSLEEP && esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT1) {
     uint64_t pins = esp_sleep_get_ext1_wakeup_status();
-    bootInfo.wakeSource = (pins & (1ULL << PIN_TOUCH_INT)) ? "touch" : (pins ? "knob" : "unknown");
-    bootWake = (pins & (1ULL << PIN_TOUCH_INT)) ? 2 : (pins ? 1 : 3);
+    bootInfo.wakeSource = (pins & (1ULL << PIN_TOUCH_INT)) ? "touch" : "knob";
+    bootWake = (pins & (1ULL << PIN_TOUCH_INT)) ? 2 : 1;
+  } else if (reset == ESP_RST_DEEPSLEEP && esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER) {
+    bootInfo.wakeSource = "timer";
+    bootWake = 3;
   }
   if (rtcSleepAtS > 0) {
     bootInfo.sleptSeconds = nowSeconds() - rtcSleepAtS;
@@ -142,15 +146,16 @@ void recordBoot(float bootVolts) {
   e.wake = bootWake;
   e.sleepWhy = bootInfo.sleptSeconds < 0 ? 0
                : strcmp(bootInfo.sleepReason, "Idle timeout reached") == 0 ? 1
-               : strcmp(bootInfo.sleepReason, "Battery low") == 0 ? 2 : 3;
+               : strcmp(bootInfo.sleepReason, "Battery low") == 0 ? 2
+               : strcmp(bootInfo.sleepReason, "No Wi-Fi") == 0 ? 3 : 0;
   prefs.putBytes("log", log, sizeof(log));
   prefs.putUChar("next", (next + 1) % kBootLogSize);
   prefs.end();
 }
 
 String bootLogJson() {
-  static const char *kWake[] = {"none", "knob", "touch", "unknown"};
-  static const char *kWhy[] = {"", "idle", "battery low", "other"};
+  static const char *kWake[] = {"none", "knob", "touch", "timer"};
+  static const char *kWhy[] = {"", "idle", "battery low", "no wi-fi"};
   BootLogEntry log[kBootLogSize] = {};
   Preferences prefs;
   prefs.begin("bootlog", true);
@@ -179,7 +184,7 @@ String bootLogJson() {
   return out + "]";
 }
 
-void sleepNow(const char *reason) { enterDeepSleep(reason); }
+void sleepNow(const char *reason, uint32_t wakeAfterS) { enterDeepSleep(reason, wakeAfterS); }
 
 void setBeforeSleep(void (*cb)()) { beforeSleep = cb; }
 

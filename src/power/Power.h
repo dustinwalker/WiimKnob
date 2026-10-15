@@ -20,8 +20,9 @@ const BootInfo &lastBoot();
 void recordBoot(float bootVolts);
 String bootLogJson(); // newest first
 
-// Deep sleep right away (e.g. on a low battery). Never returns.
-void sleepNow(const char *reason);
+// Deep sleep right away (e.g. on a low battery). Never returns. wakeAfterS adds a timer wake on
+// top of the knob and touch.
+void sleepNow(const char *reason, uint32_t wakeAfterS = 0);
 
 // Runs just before deep sleep, after the backlight is off (e.g. to save state to flash).
 void setBeforeSleep(void (*cb)());

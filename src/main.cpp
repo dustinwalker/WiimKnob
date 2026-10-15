@@ -303,6 +303,35 @@ void onWifiSetup() {
   ESP.restart();
 }
 
+void serviceBattery();
+void setupTick();
+
+// Saved Wi-Fi that can't be reached right now (router off, out of range) shouldn't open the open-
+// to-nearby setup network or keep the knob awake: offer setup for a tap, else sleep and retry.
+constexpr uint32_t kNoWifiOfferMs = 30000;
+constexpr uint32_t kNoWifiRetryMinS = 5 * 60, kNoWifiRetryMaxS = 30 * 60;
+RTC_DATA_ATTR uint32_t rtcNoWifiRetryS = 0; // backs off while the network stays unreachable
+
+bool neverConfigured() { return netConfig.ssid.isEmpty() || netConfig.ssid == "your-wifi-ssid"; }
+
+void offerSetupOrSleep() {
+  rtcNoWifiRetryS = rtcNoWifiRetryS ? min(rtcNoWifiRetryS * 2, kNoWifiRetryMaxS) : kNoWifiRetryMinS;
+  if (strcmp(power::lastBoot().wakeSource, "timer") == 0) {
+    power::sleepNow("No Wi-Fi", rtcNoWifiRetryS); // a scheduled retry: nobody's there to tap
+  }
+  ui::showMessage("Can't reach Wi-Fi", "Tap to set up Wi-Fi, or I'll retry in a few minutes.");
+  uint32_t started = millis();
+  while (millis() - started < kNoWifiOfferMs) {
+    display::tick();
+    int16_t x, y;
+    if (touch.read(x, y)) {
+      net::portal::run(netConfig, setupTick);
+    }
+    delay(20);
+  }
+  power::sleepNow("No Wi-Fi", rtcNoWifiRetryS);
+}
+
 void beforeDeepSleep() {
   wiim::albumart::saveBootArt();
   haptics::sleep();
@@ -310,6 +339,7 @@ void beforeDeepSleep() {
 
 void setupTick() {
   display::tick();
+  serviceBattery();
   power::service(); // the screen times out and the knob sleeps during setup too
 }
 
@@ -495,9 +525,11 @@ void setup() {
 
   netConfig = net::load();
   bool setupRequested = net::takeSetupRequest();
-  if (setupRequested || !connectWiFi(20000)) {
+  if (setupRequested || neverConfigured()) {
     net::portal::run(netConfig, setupTick);
   }
+  if (!connectWiFi(20000)) offerSetupOrSleep();
+  rtcNoWifiRetryS = 0;
   configTime(0, 0, "pool.ntp.org", "time.google.com"); // wall clock for the boot log; kept through deep sleep
   beginOta();
   beginStatusServer();
