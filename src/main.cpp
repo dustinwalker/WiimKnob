@@ -266,7 +266,11 @@ void beginStatusServer() {
              (unsigned long)getCpuFrequencyMhz(), power::isScreenOn() ? "true" : "false",
              boot.resetReason, boot.wakeSource, (long long)boot.sleptSeconds, boot.sleepVolts,
              boot.sleepReason);
-    statusServer.send(200, "application/json", body);
+    String json = body;
+    json.trim();
+    json.remove(json.length() - 1); // reopen the object to append the log
+    json += ",\"boot_log\":" + power::bootLogJson() + "}\n";
+    statusServer.send(200, "application/json", json);
   });
   statusServer.begin();
 }
@@ -473,6 +477,7 @@ void setup() {
   lastBattery = power::battery::read();
   lastBatteryPollMs = millis();
   ui::setBattery(lastBattery.percent, lastBattery.externalPower);
+  power::recordBoot(lastBattery.voltage);
   if (!lastBattery.externalPower && lastBattery.voltage < kWakeMinVolts) {
     // Woken (a knob bump, say) on a nearly flat cell: Wi-Fi's TX peaks could brown it out.
     ui::showMessage("Battery low", "Charge me.");
@@ -493,6 +498,7 @@ void setup() {
   if (setupRequested || !connectWiFi(20000)) {
     net::portal::run(netConfig, setupTick);
   }
+  configTime(0, 0, "pool.ntp.org", "time.google.com"); // wall clock for the boot log; kept through deep sleep
   beginOta();
   beginStatusServer();
 

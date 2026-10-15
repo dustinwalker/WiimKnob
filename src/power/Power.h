@@ -1,5 +1,6 @@
 #pragma once
 
+#include <Arduino.h>
 #include <stdint.h>
 
 namespace power {
@@ -13,6 +14,11 @@ struct BootInfo {
   const char *sleepReason = "";
 };
 const BootInfo &lastBoot();
+
+// Appends this boot to a 16-entry log in NVS, which (unlike lastBoot()) survives a flat battery.
+// Call once, after the first battery reading.
+void recordBoot(float bootVolts);
+String bootLogJson(); // newest first
 
 // Deep sleep right away (e.g. on a low battery). Never returns.
 void sleepNow(const char *reason);

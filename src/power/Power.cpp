@@ -5,6 +5,7 @@
 #include "display/DisplayDriver.h"
 
 #include <Arduino.h>
+#include <Preferences.h>
 #include <driver/rtc_io.h>
 #include <esp_sleep.h>
 #include <sys/time.h>
@@ -29,6 +30,21 @@ RTC_DATA_ATTR float rtcSleepVolts = 0;
 RTC_DATA_ATTR int64_t rtcSleepAtS = 0;
 RTC_DATA_ATTR char rtcSleepReason[24] = "";
 BootInfo bootInfo;
+esp_reset_reason_t bootReset = ESP_RST_UNKNOWN;
+uint8_t bootWake = 0; // 0 none, 1 knob, 2 touch, 3 unknown
+
+// The last few boots, in NVS so they survive a flat battery (the RTC fields above don't).
+struct BootLogEntry {
+  uint32_t epoch;    // wall clock (once NTP has set it), else seconds since power-on
+  int32_t sleptS;    // -1 if this boot didn't follow a recorded deep sleep
+  uint16_t sleepMv;
+  uint16_t bootMv;
+  uint8_t reset;     // esp_reset_reason_t
+  uint8_t wake;
+  uint8_t sleepWhy;  // 0 none, 1 idle timeout, 2 battery low, 3 other
+  uint8_t unused;
+};
+constexpr int kBootLogSize = 16;
 
 int64_t nowSeconds() {
   struct timeval tv;
@@ -94,10 +110,12 @@ void begin() {
   lastActivityMs = millis();
   esp_reset_reason_t reset = esp_reset_reason();
   bootInfo.resetReason = resetReasonName(reset);
+  bootReset = reset;
   bootInfo.wakeSource = "none";
   if (reset == ESP_RST_DEEPSLEEP && esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT1) {
     uint64_t pins = esp_sleep_get_ext1_wakeup_status();
     bootInfo.wakeSource = (pins & (1ULL << PIN_TOUCH_INT)) ? "touch" : (pins ? "knob" : "unknown");
+    bootWake = (pins & (1ULL << PIN_TOUCH_INT)) ? 2 : (pins ? 1 : 3);
   }
   if (rtcSleepAtS > 0) {
     bootInfo.sleptSeconds = nowSeconds() - rtcSleepAtS;
@@ -108,6 +126,58 @@ void begin() {
 }
 
 const BootInfo &lastBoot() { return bootInfo; }
+
+void recordBoot(float bootVolts) {
+  BootLogEntry log[kBootLogSize] = {};
+  Preferences prefs;
+  prefs.begin("bootlog", false);
+  prefs.getBytes("log", log, sizeof(log));
+  uint8_t next = prefs.getUChar("next", 0) % kBootLogSize;
+  BootLogEntry &e = log[next];
+  e.epoch = (uint32_t)nowSeconds();
+  e.sleptS = (int32_t)bootInfo.sleptSeconds;
+  e.sleepMv = (uint16_t)(bootInfo.sleepVolts * 1000);
+  e.bootMv = (uint16_t)(bootVolts * 1000);
+  e.reset = (uint8_t)bootReset;
+  e.wake = bootWake;
+  e.sleepWhy = bootInfo.sleptSeconds < 0 ? 0
+               : strcmp(bootInfo.sleepReason, "Idle timeout reached") == 0 ? 1
+               : strcmp(bootInfo.sleepReason, "Battery low") == 0 ? 2 : 3;
+  prefs.putBytes("log", log, sizeof(log));
+  prefs.putUChar("next", (next + 1) % kBootLogSize);
+  prefs.end();
+}
+
+String bootLogJson() {
+  static const char *kWake[] = {"none", "knob", "touch", "unknown"};
+  static const char *kWhy[] = {"", "idle", "battery low", "other"};
+  BootLogEntry log[kBootLogSize] = {};
+  Preferences prefs;
+  prefs.begin("bootlog", true);
+  prefs.getBytes("log", log, sizeof(log));
+  uint8_t next = prefs.getUChar("next", 0) % kBootLogSize;
+  prefs.end();
+  String out = "[";
+  for (int i = 1; i <= kBootLogSize; i++) { // newest first
+    const BootLogEntry &e = log[(next - i + kBootLogSize) % kBootLogSize];
+    if (!e.epoch && !e.bootMv) continue;
+    char when[24];
+    time_t t = e.epoch;
+    if (t > 1700000000) {
+      strftime(when, sizeof(when), "%Y-%m-%dT%H:%M:%SZ", gmtime(&t));
+    } else {
+      snprintf(when, sizeof(when), "+%lus", (unsigned long)e.epoch);
+    }
+    char item[200];
+    snprintf(item, sizeof(item),
+             "%s{\"time\":\"%s\",\"reason\":\"%s\",\"wake\":\"%s\",\"slept_s\":%ld,"
+             "\"sleep_v\":%.2f,\"sleep_why\":\"%s\",\"boot_v\":%.2f}",
+             out.length() > 1 ? "," : "", when, resetReasonName((esp_reset_reason_t)e.reset),
+             kWake[e.wake & 3], (long)e.sleptS, e.sleepMv / 1000.0f, kWhy[e.sleepWhy & 3], e.bootMv / 1000.0f);
+    out += item;
+  }
+  return out + "]";
+}
 
 void sleepNow(const char *reason) { enterDeepSleep(reason); }
 
