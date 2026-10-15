@@ -914,6 +914,15 @@ void setConnected(bool connected) {
                              connected ? lv_palette_main(LV_PALETTE_GREEN) : lv_palette_main(LV_PALETTE_RED), 0);
 }
 
+void setBatteryCalibrating(bool on) {
+  static int last = -1;
+  if (last == (int)on) return;
+  last = on;
+  lv_color_t c = lv_color_hex(on ? 0xEF9F27 : 0xcccccc);
+  lv_obj_set_style_border_color(batteryIconOutline, c, 0);
+  lv_obj_set_style_bg_color(batteryIconNub, c, 0);
+}
+
 void setBattery(int percent0to100, bool onUsbPower) {
   if (percent0to100 < 0) percent0to100 = 0;
   if (percent0to100 > 100) percent0to100 = 100;

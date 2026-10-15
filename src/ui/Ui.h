@@ -62,6 +62,8 @@ void setConnected(bool connected); // small dot at the top of the controls
 // percentage (tap again to go back). onUsbPower adds a bolt: charging or already full, which
 // this board can't tell apart (see Reading::externalPower in Battery.h).
 void setBattery(int percent0to100, bool onUsbPower);
+// Amber battery outline while a battery calibration run is logging.
+void setBatteryCalibrating(bool on);
 
 // Settings page: one row per setting, a row selected by tapping it. The knob adjusts the
 // selected row while this page is showing (see isSettingsActive()).

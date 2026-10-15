@@ -505,6 +505,14 @@ void serviceBattery() {
     settings::set(settings::kBatteryCal, 0); // plugged in mid-run: the curve would be wrong
     applySetting(settings::kBatteryCal);
   }
+  bool calibrating = power::batcal::enabled() && power::batcal::loggedMinutes() > 0;
+  ui::setBatteryCalibrating(calibrating);
+  if (calibrating) {
+    uint32_t m = power::batcal::loggedMinutes();
+    char text[24];
+    snprintf(text, sizeof(text), "%luh %02lum", (unsigned long)(m / 60), (unsigned long)(m % 60));
+    ui::setSettingValue(settings::kBatteryCal, text);
+  }
 
   // Sleep before the cell runs flat, so it never just goes dark: three low readings in a row
   // (15s) rule out a one-off dip under load.
