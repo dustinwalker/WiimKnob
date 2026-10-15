@@ -410,6 +410,7 @@ void applyPowerSource(bool external) {
 }
 
 constexpr float kLowBatteryVolts = 3.45f; // ~5% on the generic LiPo curve in Battery.cpp
+constexpr float kWakeMinVolts = 3.50f;    // above kLowBatteryVolts: no connecting only to hit the low sleep 15s later
 
 void serviceBattery() {
   uint32_t now = millis();
@@ -468,6 +469,17 @@ void setup() {
   input::knob::begin();
   power::begin();
   power::setBeforeSleep(beforeDeepSleep);
+  power::battery::begin();
+  lastBattery = power::battery::read();
+  lastBatteryPollMs = millis();
+  ui::setBattery(lastBattery.percent, lastBattery.externalPower);
+  if (!lastBattery.externalPower && lastBattery.voltage < kWakeMinVolts) {
+    // Woken (a knob bump, say) on a nearly flat cell: Wi-Fi's TX peaks could brown it out.
+    ui::showMessage("Battery low", "Charge me.");
+    display::tick();
+    delay(2500);
+    power::sleepNow("Battery low");
+  }
   if (const lv_img_dsc_t *bootArt = wiim::albumart::loadBootArt()) {
     // Last session's cover, dimmed, while reconnecting -- the real art replaces it.
     ui::setAlbumArt(bootArt, nullptr);
@@ -475,7 +487,6 @@ void setup() {
     ui::setArtPending(true);
   }
   power::setScreenCallback(onScreenChange);
-  power::battery::begin();
 
   netConfig = net::load();
   bool setupRequested = net::takeSetupRequest();
