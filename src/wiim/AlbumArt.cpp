@@ -3,6 +3,7 @@
 #include <HTTPClient.h>
 #include <JPEGDEC.h>
 #include <LittleFS.h>
+#include <Preferences.h>
 #include <WiFiClientSecure.h>
 #include <esp_heap_caps.h>
 #include <new>
@@ -437,6 +438,12 @@ lv_img_dsc_t bootDesc = {};
 
 void saveBootArt() {
   if (current < 0 || !LittleFS.begin(true)) return;
+  Preferences prefs;
+  prefs.begin("bootart", false);
+  bool unchanged = prefs.getString("url", "") == lastUrl && LittleFS.exists(kBootArtPath);
+  if (!unchanged) prefs.putString("url", "");     // cleared first: a write cut short won't match
+  prefs.end();
+  if (unchanged) return;                           // ~250KB and a second at full power, skipped
   const lv_img_dsc_t &desc = shown[current].desc;
   int w = desc.header.w, h = desc.header.h;
   if (min(w, h) < kWorkingSize) return;
@@ -446,6 +453,9 @@ void saveBootArt() {
   const uint16_t *crop = &src[((h - kWorkingSize) / 2) * w + (w - kWorkingSize) / 2];
   for (int y = 0; y < kWorkingSize; y++) f.write((const uint8_t *)&crop[y * w], kWorkingSize * 2);
   f.close();
+  prefs.begin("bootart", false);
+  prefs.putString("url", lastUrl);
+  prefs.end();
 }
 
 const lv_img_dsc_t *loadBootArt() {
