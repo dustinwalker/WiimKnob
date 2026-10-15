@@ -4,6 +4,7 @@
 #include <JPEGDEC.h>
 #include <LittleFS.h>
 #include <Preferences.h>
+#include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <esp_heap_caps.h>
 #include <new>
@@ -296,11 +297,12 @@ bool fetch(const String &url) {
     return true; // already showing this image
   }
 
-  WiFiClientSecure client;
-  client.setInsecure(); // arbitrary external art host; we only display the bytes, no secrets involved
+  WiFiClientSecure secure;
+  secure.setInsecure(); // arbitrary external art host; we only display the bytes, no secrets involved
+  WiFiClient plain;     // Roon's Core serves covers over plain HTTP on the LAN
 
   HTTPClient http;
-  if (!http.begin(client, url)) {
+  if (!http.begin(url.startsWith("https:") ? (NetworkClient &)secure : plain, url)) {
     return false;
   }
   http.setTimeout(5000);
