@@ -2,48 +2,61 @@
 
 ![WiimKnob banner](docs/banner.webp)
 
-Firmware for the [Waveshare ESP32-S3-Knob-Touch-LCD-1.8](https://www.waveshare.com/esp32-s3-knob-touch-lcd-1.8.htm)
-that turns it into a small WiiM remote. This is a fork of
-[xon94010/WiimKnob](https://github.com/xon94010/WiimKnob); see **Credits** at the end.
+WiimKnob turns the [Waveshare ESP32-S3-Knob-Touch-LCD-1.8](https://www.waveshare.com/esp32-s3-knob-touch-lcd-1.8.htm)
+into a small remote for a WiiM streamer. The album art fills the round screen, the knob sets the
+volume, and a swipe skips the track. It's a fork of
+[xon94010/WiimKnob](https://github.com/xon94010/WiimKnob), and the credits are at the bottom.
 
-- **Album art is the home screen.** A tap, a knob turn or waking the screen brings the controls
-  up over a darkened copy of the art, tinted with the cover's own color: volume in big digits
-  with a red ring around the edge, title/artist/album, prev/play-pause/next, and a battery
-  icon. After a few seconds without input the controls fade and the art is left with two
-  things: a scrolling "title • artist" band that crossfades in as the controls go, and a
-  progress ring around the edge.
-- The progress ring takes the cover's strongest color (white for gray covers) over a dark band
-  of the same hue, and glides as the track plays instead of ticking once a second.
-- With only the art showing, swipe left/right to skip tracks. A ⏭/⏮ flash with a spinner shows
-  until the WiiM reports the new track. The old art then holds at 70% dim with three bouncing
-  dots until the new cover has downloaded, and the new cover fades in.
-- Turn the knob to change volume, with a light haptic buzz on taps via the board's DRV2605L.
-- Five swipeable pages: **Now playing**, **Recently played** (hidden unless turned on in
-  Settings), **Presets**, **Settings** and **Network**. Tap the art first to bring up the
-  controls, then swipe to change pages.
-- **Settings** (tap a row, turn the knob to adjust; saved in flash): brightness, how long the
-  controls stay up, screen-off and sleep timeouts, the Recently played page, and battery
-  calibration.
-- **Network** shows the Wi-Fi name, IP, signal and WiiM, and holds the Wi-Fi setup button. Setup
-  runs from your phone: the knob opens its own network with a QR code, and a page there picks
-  the Wi-Fi network and the WiiM to control. It also opens by itself if the saved network
-  can't be reached at boot.
-- Power-aware: the screen dims 15 seconds before it turns off, polling slows and the CPU drops
-  to 80MHz while it's dark, and the board deep-sleeps after a longer timeout. On USB power it
-  stays awake and dims instead of turning off. Double-tapping the dark screen plays/pauses
-  without waking it.
-- Learns its own battery: one calibration run from full to empty replaces the generic LiPo
-  curve and sets the low-battery cutoff (see **Battery gauge**).
-- Over-the-air updates, and a read-only status page at `http://wiimknob.local/status` (Wi-Fi,
-  memory, battery, the learned curve and a boot log).
-- Handles accented/non-ASCII track and artist names correctly (see **Fonts** below) — the
-  stock LVGL fonts only cover plain ASCII.
+## What it does
 
-This is a first working version, not a finished product — see **Ideas for next steps** below.
+### The album art is the home screen
+
+Most of the time you just see the cover. Tap the screen, turn the knob or wake it, and the
+controls come up over a darkened copy of the art, tinted with the cover's own color. You get the
+volume in big digits with a red ring, the title, artist and album, prev, play/pause and next, and
+a battery icon.
+
+Leave it alone for a few seconds and the controls fade. As they go, a band with the scrolling
+title and artist fades in near the bottom. It runs edge to edge, so the round glass crops it and
+it looks like part of the bezel.
+
+A progress ring runs around the edge. It takes the strongest color in the cover and sits on a
+dark band of the same hue, so it matches whatever's playing. Gray and black-and-white covers get
+a white ring. It glides along as the song plays rather than ticking once a second.
+
+### Swipe to skip
+
+With only the art showing, swipe left or right to change tracks. A ⏭ or ⏮ flash with a spinner
+stays up until the WiiM reports the new track. Then the old cover sits at 70% dim with three
+bouncing dots until the new one has downloaded, and the new cover fades in.
+
+### Five pages
+
+Tap the art to bring up the controls, then swipe sideways between Now playing, Recently played,
+Presets, Settings and Network. Recently played stays hidden until you turn it on in Settings.
+
+On the Settings page you tap a row and turn the knob to change it. It has brightness, how long
+the controls stay up, the screen-off and sleep timeouts, the Recently played page, and battery
+calibration. Everything saves to flash.
+
+The Network page shows the Wi-Fi name, IP address, signal and which WiiM it controls, and has
+the button for setting up Wi-Fi again.
+
+### Everything else
+
+- The knob turns the volume, and taps get a light buzz from the board's DRV2605L haptic driver.
+- It looks after the battery. The screen dims, then turns off, then the board deep-sleeps.
+  Double-tapping the dark screen plays or pauses without waking it. On USB power it stays awake.
+- It learns its own battery. One calibration run from full to empty replaces the generic LiPo
+  curve and sets the low-battery cutoff.
+- You can update it over Wi-Fi, and `http://wiimknob.local/status` shows Wi-Fi, memory,
+  battery, the learned curve and a boot log.
+- Accented names like Beyoncé or Sigur Rós draw properly. The stock LVGL fonts only cover plain
+  ASCII, so this needed regenerated fonts.
 
 ## Screenshots
 
-These show the original four-screen layout; the controls now sit over full-screen art.
+These show the original four-screen layout. The controls now sit over full-screen art.
 
 <table>
 <tr>
@@ -58,345 +71,375 @@ These show the original four-screen layout; the controls now sit over full-scree
 </tr>
 </table>
 
-## Hardware background
+## Building and flashing
 
-Waveshare hasn't published a pinout or demo code for this board (its wiki page is a
-placeholder as of writing). Everything in `include/Pins.h` and `src/display/PanelInit.h` comes
-from a community reverse-engineering effort that measured the schematic and factory firmware
-directly:
-https://github.com/teetotum-rs/firmware/blob/main/docs/hardware/
+1. Copy the config template:
 
-Two things worth knowing going in:
+   ```bash
+   cp include/Config.h.example include/Config.h
+   ```
 
-1. **The board has two microcontrollers.** The ESP32-S3 (which this firmware runs on) owns the
-   display, touch and one of the two physical encoders on the shaft. A second, classic ESP32
-   owns the audio DAC, classic Bluetooth, and forwards knob turns to a *second* logical encoder.
-   This project only uses the ESP32-S3 side — we don't need the board's own audio output since
-   WiiM is doing the actual audio playback.
-2. **The knob is not a quadrature encoder.** Each direction pulses its own GPIO low (one pulse
-   per detent, 30 per revolution) rather than two lines in quadrature. `src/input/Knob.cpp`
-   decodes it by sampling the pin levels, not by counting edges -- see **Knob and screen
-   responsiveness** below for why.
+   The build needs this file, but you don't have to fill in your Wi-Fi or WiiM. The knob asks for
+   those on first boot. The rest of the file holds defaults for timeouts, polling and the battery,
+   and they're fine as they are.
 
-## WiiM API
-
-Uses WiiM's local HTTP API (`https://<device-ip>/httpapi.asp?command=...`), documented at
-https://cvdlinden.github.io/wiim-httpapi/ and in WiiM's own PDF. It's HTTPS with a self-signed
-certificate and only reachable on your LAN, so the firmware skips certificate validation
-(`WiFiClientSecure::setInsecure()`) rather than trying to pin a cert that isn't meant to be
-verified against a public CA.
-
-Commands used: `getPlayerStatus` (play state, volume), `getMetaInfo` (title/artist/album/cover
-URL), `setPlayerCmd:vol:<0-100>`, `setPlayerCmd:onepause`, `setPlayerCmd:next`,
-`setPlayerCmd:prev`, `MCUKeyShortClick:<n>` (fire preset n), `getAllRoutines` and
-`getStatusEx` (preset details, see **Presets**). Presets and recently played also use the
-WiiM's UPnP `PlayQueue` service (plain HTTP on port 49152): `GetKeyMapping`, `BrowseQueue`,
-`CreateQueue`, `PlayQueueWithIndex`.
-
-All WiiM networking runs on two FreeRTOS tasks (`src/wiim/WiimTask.cpp`), pinned away from the
-core that drives the display/touch/knob loop, so a slow or stalled network call can't freeze
-the UI. One task only sends what you just did (buttons, presets, albums, volume) and polls
-play state; everything slow (metadata, album art download, saving recently played albums,
-refreshing presets) runs on the other. With a single task, a tap could sit queued behind a
-multi-second album art download.
-
-Two things about the connection itself:
-
-- **Keep it open, and retry once.** A fresh TLS handshake costs 400-700ms on this CPU, so each
-  task keeps a long-lived `WiFiClientSecure`/`HTTPClient` pair open across calls. The WiiM's
-  web server drops idle keep-alive connections after ~5-10s, and a request that hits a
-  just-closed one fails before the WiiM ever sees it, so those get retried once on a fresh
-  connection. The command task's status poll (every 1.2s) is also what keeps its connection
-  warm.
-- **Only two TLS sessions at a time.** Each one pins ~40KB of internal RAM (this framework
-  build can't put mbedTLS buffers in PSRAM). The background task closes its own connection
-  before downloading album art, which needs a third.
-
-On reuse (see the big comment in `WiimClient.h`): **both** objects have to be
-persistent, not just the socket. `HTTPClient`'s destructor unconditionally closes its
-connection, so a fresh `HTTPClient` per call — even one that reuses the same
-`WiFiClientSecure` — silently undid the keep-alive every time; every request paid a full TLS
-handshake (measured at 400-700ms on this CPU) instead of the ~15-45ms a genuinely reused
-connection costs. That was the actual cause of the multi-second lag on volume/prev/next/pause
-in early versions of this firmware, not the network or the WiiM itself.
-
-## Presets
-
-The WiiM's own `getPresetInfo` reports zero presets on this firmware generation: presets are
-now "routines", lists of steps (switch input, switch output, load an EQ, set the subwoofer)
-stored on the device. The presets screen reads which routine sits in each slot (UPnP
-`GetKeyMapping`), joins that with the routine definitions (`getAllRoutines`), and labels each
-tile by what it does: input first (`line-in`, or `ethernet`/`wi-fi` for network streaming,
-depending on how the WiiM is connected), then a USB DAC output, otherwise just `EQ`. Tapping a
-tile sends `MCUKeyShortClick:<slot>`, the same as pressing it in the WiiM Home app.
-
-The list is read at boot and refreshed every 5 minutes, so edits in the app show up on their
-own. The WiiM doesn't store preset artwork locally and doesn't report which preset is in
-effect, so the red border marks the last preset fired from the knob, not the "active" one.
-
-## Recently played
-
-The WiiM Home app's recently played list lives in WiiM's cloud, not on the device, so the
-knob keeps its own. Whenever a new album starts playing from a queue on the WiiM, the knob
-saves a copy of that queue (`BrowseQueue`) plus a 68px thumbnail to flash (LittleFS, on the
-`spiffs` partition), so the list survives deep sleep and reboots. Tapping a thumbnail hands the
-saved queue back (`CreateQueue`) and starts it from the first track (`PlayQueueWithIndex`).
-`ReplaceQueue` looks like the right call but only swaps a queue that's already loaded, so it
-silently restarted the current album instead.
-
-An album is identified by its title plus its main artist, worked out from the saved track list
-(the most common artist across its tracks, ignoring "feat." guests). The WiiM only reports the
-current *track's* artist, which can change within an album: on Daft Punk's *Random Access
-Memories* most tracks are "Daft Punk feat. ..." and one is credited to "Thomas Bangalter"
-alone, which used to save the same album several times.
-
-The page is off by default (turn it on in Settings). While it's off nothing is recorded.
-
-Limits worth knowing:
-
-- **Only sources that play from a queue on the WiiM show up**: albums started from the WiiM
-  Home app (Plex, Qobuz, etc.). Connect-style sources (Qobuz Connect, Spotify Connect, TIDAL
-  Connect, AirPlay) stream from another app with no device-side queue, so there's nothing to
-  save or replay.
-- **Streaming links can expire.** Qobuz stream URLs in a saved queue carry an expiry time
-  (hours out); Plex links point at your own server and don't. An old Qobuz entry may fail to
-  replay.
-- **Saved queues include whatever the WiiM had in them**, which for Plex includes the server's
-  access token. They stay in the knob's flash and are never logged.
-
-## Knob and screen responsiveness
-
-Fast knob spins used to lag well behind the hand. Two separate causes, both measured on-device:
-
-- **The knob was losing detents.** The first decoder counted falling edges in a GPIO interrupt
-  with a 5ms per-line debounce. On a fast spin the edges ring, and both lines sometimes dip
-  together for a moment: logging showed ~85% of edges being discarded, and the both-low dips
-  counting as one clockwise *plus* one counter-clockwise detent, which cancel out. The decoder
-  now samples both pins every 1ms on an `esp_timer`, only trusts a level that's held for 2ms,
-  counts a detent when exactly one line is low after the knob was idle, ignores both-low, and
-  needs a return to idle before the next detent. (The community teardown saw the same thing:
-  edge counting gave 37-41 per revolution, polling the levels exactly 30.)
-- **Redraws were slow.** Measured with a simulated fast spin (a detent every 15ms on the
-  full-screen art page), the volume readout went from 21.5 fps with 86ms from detent to
-  screen, to ~43 fps and ~19ms. What made the difference:
-  - Restarting the readout's fade on every detent touched its opacity, which marks the whole
-    210px circle dirty. Now only the digits and the changed slice of the ring redraw, and a
-    timer starts the fade once the knob has been still for a second (this alone halved the
-    per-frame cost).
-  - A knob turn redraws immediately (`lv_refr_now`) instead of waiting for LVGL's next refresh
-    tick, and that tick is 15ms instead of 30ms.
-  - Album art is decoded at the screen's full 360px, so the full-screen page draws it 1:1
-    instead of software-scaling it on every redraw.
-  - The readout's circle is opaque: blending a translucent one over the art cost ~5ms of each
-    ~20ms frame.
-  - `loop()` re-applies the WiiM's play state, connection and volume every pass; the UI now
-    skips values that haven't changed instead of re-laying out text and refreshing styles.
-
-- **Full-screen swipes were transfer-bound.** Arduino_GFX sent 2KB at a time and waited on
-  each, which cost 28ms of every full-screen frame (the ~4.5ms above was a small redraw). The
-  panel is now fed from a task on core 0: each band is copied into two 8KB internal bounce
-  buffers and sent by DMA while LVGL renders the next band (DMA can't read PSRAM at this
-  clock). With `-O2`, full-screen frames went from ~49ms to ~28-40ms.
-- **Album art is pre-scaled.** Covers are decoded, box-filtered (or upscaled, for small ones)
-  to the screen's 360px once, and the tinted backdrop is built at the same time, so every art
-  draw is 1:1. Art is double-buffered, so the screen never draws a buffer being rewritten.
-
-Things that measured as *not* worth it: moving LVGL's draw buffers into internal RAM and
-sending them by DMA directly (no measurable gain; rendering on the CPU is the bottleneck).
-
-## Memory
-
-Internal RAM (~320KB) is the scarce kind: each WiiM TLS connection needs a large contiguous
-block of it, and album art downloads were failing for lack of it. LVGL's 48KB object pool and
-the 18KB JPEG decoder live in the 8MB PSRAM instead, which left ~93KB internal free with no
-measurable effect on frame times. `/status` reports the free internal heap and its low point.
-
-## Power management
-
-All of these reset on any touch or knob turn. The timeouts are adjustable on the Settings page;
-the defaults come from `Config.h`.
-
-- **Hide controls** (`CONTROLS_TIMEOUT_S`, default 8s): the controls fade, leaving the art.
-- **Dim**, 15 seconds before the screen turns off: a quarter of the set brightness. A touch on
-  a dimmed screen only brightens it; it doesn't reach the controls.
-- **Screen off** (`SCREEN_TIMEOUT_S`, default 70s): the backlight turns off. Wi-Fi stays
-  connected and turning the knob still changes volume. While it's dark the knob polls play
-  state every 3s (enough to keep the connection warm, so a command still goes out at once),
-  stops reading track info (each read was a fresh TLS handshake; waking refreshes it), checks
-  touch every 20ms instead of 5ms, and runs the CPU at 80MHz. A double-tap toggles play/pause
-  and leaves the screen off; a single tap wakes it to the art, a knob turn wakes it to the
-  controls.
-- **Sleep** (`DEEP_SLEEP_TIMEOUT_MIN`, default 10 min): the board deep-sleeps, cutting Wi-Fi
-  and the CPU. A touch or knob turn wakes it by pulsing one of three GPIOs the chip watches
-  while asleep (see `src/power/Power.cpp`). Before sleeping, the panel controller goes into its
-  own sleep mode and the haptic driver into standby with its enable pin held low, and the
-  current cover is saved to flash (only if it changed). Waking is a full reboot: the saved
-  cover shows dimmed while it reconnects to the AP it used last (skipping the scan), and the
-  knob detent that woke it is applied as a volume step once the volume is known.
-- **On USB power** the knob stays awake: no screen-off or sleep (the screen dims instead), no
-  modem sleep (which adds 100-400ms to every WiiM request), and status polls every 0.5s. That
-  also keeps it reachable for over-the-air updates.
-- **Low battery:** below the cutoff for 15s it shows "Battery low" and sleeps; a wake within
-  0.05V of the cutoff goes straight back to sleep without starting Wi-Fi. The cutoff is 3.45V
-  until a calibration run learns one for this battery.
-- **Wi-Fi unreachable at boot:** it offers setup for 30s (tap the screen), then sleeps and
-  retries after 5, 10, 20 and then every 30 minutes. The setup network only opens by itself when
-  no network has ever been saved.
-
-The other chip on the board (the classic ESP32 running Waveshare's audio/Bluetooth firmware)
-keeps running through the S3's deep sleep, and nothing documented on the link between them
-can put it to sleep. It's the most likely drain on a battery left asleep overnight.
-
-`/status` shows the reason for the current boot and a 16-entry boot log kept in NVS (start
-reason, wake source, time asleep, voltage at sleep and at wake), which survives a flat battery.
-A loop watchdog (15s) reboots a hung firmware rather than leaving the screen lit.
-
-## Haptics
-
-The board has a DRV2605L LRA haptic driver on the touch controller's I2C bus (address `0x5A`),
-enabled via GPIO38. Per the community research this project relies on for its pinout, the chip
-answers on I2C regardless of that pin's state but its output stage stays off — and everything
-feels like no motor is attached — until GPIO38 is driven high. `src/haptics/Haptics.cpp` enables
-it, configures the driver for LRA playback (not the ERM default), and fires a short "click"
-effect on every prev/play-pause/next tap, preset or album tap, and double-tap play/pause. It deliberately skips the DRV2605L's calibration
-registers (rated voltage, overdrive clamp, auto-cal) — the ROM-library default felt effect
-works fine on this board without them, and getting those wrong is how you end up silently
-over-driving the actuator.
-
-## Fonts
-
-The stock LVGL `lv_font_montserrat_16`/`_20` only include ASCII plus the icon symbols — verified
-directly from their compiled-in glyph range tables, not assumed. Any accented character (é, ö,
-ñ, etc., e.g. in a track or artist name) had no glyph to draw at all. `src/ui/fonts/` has three
-regenerated replacements (`lv_font_montserrat_16_latin`/`_18_latin`/`_20_latin`, used for the
-title/artist labels and the ticker only) built from the same Montserrat-Medium.ttf + FontAwesome5 symbol set LVGL's own
-build uses, with the main range extended to cover Latin-1 Supplement and Latin Extended-A
-(`0x20-0x7F,0xA0-0x17F,0x2022`) — enough for French, German, Spanish, Nordic, Polish, Czech,
-and most other Western/Central European text. The exact `lv_font_conv` command is in each
-file's own header comment if you need to extend the range further (e.g. for Cyrillic or Greek).
-
-Two more generated fonts live alongside them: `lv_font_montserrat_96_digits` (just 0-9, for the
-big volume readout -- LVGL's built-in fonts stop at 48px) and `lv_font_preset_icons_26` (four
-FontAwesome glyphs for the preset tiles).
-
-## Battery gauge
-
-The controls show a battery-shaped icon with a proportional, color-coded fill. This board has
-no fuel-gauge chip and no charger-status pin, so the level is an estimate — see the comments in
-`src/power/Battery.h`/`.cpp`:
-
-- **Level**: read from `BATTERY_ADC_PIN` (GPIO1, a community-documented but Waveshare-unverified
-  candidate for the battery sense pin) and converted through `BATTERY_DIVIDER_RATIO` and a
-  voltage curve: a generic LiPo one until a calibration run replaces it. Both the pin and the ratio need calibrating against a multimeter
-  reading of your actual battery — the raw voltage is logged over serial every poll
-  (`[battery] ...`) specifically so you can do that.
-- **USB power**: GPIO1 measured 4.66-4.84V on USB and the cell's own 3.9-4.2V on battery, so the
-  pin sits on the supply rail rather than the cell. Anything above a full cell (4.45V on, 4.35V
-  off) means USB power, shown as a bolt on the icon. It can't tell charging from full, and the
-  percentage holds at its last battery reading while plugged in.
-
-### Calibration
-
-A cell's voltage curve depends on the cell and the load, so the generic one can read 90% for
-hours and then fall away. **Settings -> Calibrate battery** learns the real one:
-
-1. Charge fully, unplug, and turn the setting on. The knob stays awake with the screen on, a
-   steady load, and the battery icon's outline turns orange.
-2. It logs the voltage once a minute to flash, so the run survives a reboot or an update.
-3. The low-battery shutdown ends the run, and that point counts as 0%. The knob turns the log
-   into an 11-point curve (100%, 90% ... 0%) and sets its low-battery cutoff a little above
-   where the battery gave out. Both live in NVS.
-4. Plugging in early aborts a run that hadn't reached near-empty, and finishes one that had.
-   If the run ended in a reset instead of a clean shutdown, the next boot rescues the log.
-
-`/status` shows the learned curve, the run length and the cutoff in use.
-
-## Setup
-
-1. Copy `include/Config.h.example` to `include/Config.h` and fill in your Wi-Fi credentials and
-   your WiiM's IP address (find it in the WiiM Home app under Device Info; a static DHCP
-   reservation on your router means you won't need to update this later).
-2. Install [PlatformIO](https://platformio.org/). **This needs Python 3.10 or newer** — the
-   platform this project uses (see below) refuses to run under older Python. If your default
-   `python3` is older (macOS ships 3.9 by default), install a newer one (e.g. `brew install
-   python@3.11`) and create a venv for PlatformIO with it:
+2. Install [PlatformIO](https://platformio.org/). It needs Python 3.10 or newer, and macOS ships
+   3.9. If yours is older, install a newer Python and give PlatformIO its own venv:
 
    ```bash
    python3.11 -m venv ~/.platformio-venv
+   ```
+
+   ```bash
    ~/.platformio-venv/bin/pip install platformio
    ```
 
-   Use `~/.platformio-venv/bin/pio` in place of `pio` below (or add it to your `PATH`).
-3. Build and upload:
+   Then use `~/.platformio-venv/bin/pio` wherever this README says `pio`.
+
+3. Hold the BOOT button on the ESP32-S3R8 side, plug in USB-C, let go, and flash:
 
    ```bash
    pio run -e esp32-s3-knob -t upload
    ```
 
-   To flash: hold the **BOOT** button on the ESP32-S3R8 side, plug in via USB-C, then release.
-   The Type-C port routes to either the ESP32-S3's native USB or the USB-UART bridge depending
-   on cable orientation (per Waveshare's product page) — if upload doesn't find the port, try
-   flipping the cable.
+   The USB-C port reaches a different chip depending on which way the plug goes in. If the upload
+   can't find the port, or says "This chip is ESP32, not ESP32-S3", flip the plug. Nothing gets
+   written to the wrong chip. If it says "No serial data received", the board is probably asleep
+   or stuck. Unplug it, hold BOOT, plug back in and let go.
 
-4. Open the serial monitor (`pio device monitor`) to watch it connect to Wi-Fi and start
-   polling.
-5. After that first USB flash, update over Wi-Fi while the knob is awake (or on USB power):
+4. If you want to watch it boot, `pio device monitor` shows the log.
 
-   ```bash
-   pio run -e esp32-s3-knob-ota -t upload
-   ```
+If the screen stays dark or PSRAM isn't detected, compare `board_build.arduino.memory_type` and
+`board_build.psram_type` in `platformio.ini` with what `esptool.py flash_id` reports. They're
+based on the product page, which lists 16MB quad flash and 8MB octal PSRAM, and Waveshare could
+ship a revision wired differently.
 
-   Set `OTA_PASSWORD` in `Config.h` to require a password (see `platformio.ini`). To change the
-   Wi-Fi network or WiiM later, use **Network -> Hold to set up Wi-Fi** instead of reflashing;
-   `Config.h`'s values are only the fallback until something is saved there.
+## Getting it on your Wi-Fi
 
-   If upload fails with "This chip is ESP32, not ESP32-S3", the cable orientation reached the
-   board's other microcontroller (nothing gets written): flip the USB-C plug at the board. If
-   it fails with "No serial data received", the board is probably in deep sleep or stuck:
-   unplug, hold **BOOT**, plug back in, release.
+You do this from your phone. There's no need to edit `Config.h`.
 
-If the screen stays dark or PSRAM isn't detected at boot, check `platformio.ini`'s
-`board_build.arduino.memory_type` / `board_build.psram_type` against what `esptool.py
-flash_id` reports for your specific board revision — these straps are inferred from the
-product page spec (16MB quad flash, 8MB octal PSRAM on the ESP32-S3R8 module) but Waveshare
-could ship a revision with different wiring.
+1. On first boot the knob opens its own network, `WiimKnob-Setup`, and shows a QR code.
+2. Scan the code with your phone's camera to join. The password is in the code, and it's
+   different every time, so someone has to be holding the knob to change its network.
+3. A setup page opens on your phone. If it doesn't, go to `http://10.254.254.1`.
+4. Pick your Wi-Fi network, type the password and tap Connect.
+5. The knob joins and looks for WiiMs on your network. Pick yours and tap Save and restart.
+
+The knob keeps all of this in its own flash, so it survives updates and deep sleep.
+
+To change it later, go to the Network page and hold "Hold to set up Wi-Fi". The setup page has a
+Keep current Wi-Fi button in case you change your mind. If nobody joins for 10 minutes, the knob
+gives up and goes back to the saved network.
+
+If the saved network is down when the knob boots, it shows "Can't reach Wi-Fi" for 30 seconds.
+Tap to open setup. Otherwise it sleeps and tries again after 5, 10 and 20 minutes, then every 30.
+
+You can still put `WIFI_SSID`, `WIFI_PASSWORD` and `WIIM_HOST` in `Config.h` if you'd rather not
+use the phone. The knob only uses them until something gets saved through setup.
+
+## Updating over Wi-Fi
+
+After the first USB flash, update over the air while the knob is awake or plugged in:
+
+```bash
+pio run -e esp32-s3-knob-ota -t upload
+```
+
+Anything on your LAN can flash the knob while it's awake. To stop that, set `OTA_PASSWORD` in
+`Config.h` and pass it at upload time. `platformio.ini` has the details.
+
+## Hardware background
+
+Waveshare hasn't published a pinout or demo code for this board. Its wiki page was still a
+placeholder at the time of writing. Everything in `include/Pins.h` and
+`src/display/PanelInit.h` comes from a community teardown that measured the schematic and the
+factory firmware: https://github.com/teetotum-rs/firmware/blob/main/docs/hardware/
+
+Two things to know going in.
+
+The board has two microcontrollers. The ESP32-S3, which runs this firmware, owns the display,
+the touch panel and one of the two encoders on the shaft. A second chip, a classic ESP32, owns
+the audio DAC and classic Bluetooth, and forwards knob turns to a second logical encoder. This
+project only uses the S3. The WiiM does the actual playback, so the board's own audio output
+isn't needed.
+
+The knob isn't a quadrature encoder. Each direction pulses its own GPIO low, one pulse per
+detent and 30 per revolution. `src/input/Knob.cpp` decodes it by sampling pin levels rather than
+counting edges. The responsiveness section below explains why.
+
+## WiiM API
+
+The knob talks to the WiiM's local HTTP API at `https://<device-ip>/httpapi.asp?command=...`,
+documented at https://cvdlinden.github.io/wiim-httpapi/ and in WiiM's own PDF. It's HTTPS with a
+self-signed certificate, reachable only on your LAN. There's no public CA to check it against, so
+the firmware skips certificate validation with `WiFiClientSecure::setInsecure()`. Plain HTTP on
+port 80 is closed.
+
+Commands it uses:
+
+- `getPlayerStatus` for play state and volume
+- `getMetaInfo` for title, artist, album and cover URL
+- `setPlayerCmd:vol:<0-100>`, `setPlayerCmd:onepause`, `setPlayerCmd:next`, `setPlayerCmd:prev`
+- `MCUKeyShortClick:<n>` to fire preset n
+- `getAllRoutines` and `getStatusEx` for preset details
+
+Presets and recently played also use the WiiM's UPnP `PlayQueue` service, plain HTTP on port
+49152, with `GetKeyMapping`, `BrowseQueue`, `CreateQueue` and `PlayQueueWithIndex`.
+
+All the WiiM networking runs on two FreeRTOS tasks in `src/wiim/WiimTask.cpp`, on the other core
+from the display, touch and knob. A slow network call can't freeze the screen. One task sends
+what you just did, like a button, preset, album or volume change, and polls play state. The
+other handles the slow stuff: metadata, album art downloads, saving recently played albums and
+refreshing presets. With a single task, a tap could sit in line behind a multi-second art
+download.
+
+Two things about the connection itself.
+
+Each task keeps its connection open and retries once. A fresh TLS handshake costs 400-700ms on
+this CPU, so each task keeps a `WiFiClientSecure` and `HTTPClient` pair open between calls. The
+WiiM drops idle connections after 5-10 seconds. A request that lands on one it just closed fails
+before the WiiM ever sees it, so the knob retries those once on a new connection. The 1.2-second
+status poll keeps the command task's connection warm.
+
+Only two TLS sessions run at once. Each one ties up about 40KB of internal RAM, because this
+framework build can't put mbedTLS buffers in PSRAM. The background task closes its own
+connection before downloading album art, which needs a third.
+
+Both objects have to stay alive for reuse to work, not just the socket. `HTTPClient` closes its
+connection in its destructor no matter what. Early versions made a fresh `HTTPClient` per call
+on top of a shared `WiFiClientSecure`, and every request quietly paid a full TLS handshake,
+400-700ms instead of the 15-45ms a reused connection costs. That was the real cause of the
+multi-second lag on volume and skip in those versions, not the network or the WiiM. The long
+comment in `WiimClient.h` has the details.
+
+## Presets
+
+On this firmware generation the WiiM's own `getPresetInfo` reports zero presets. Presets are now
+"routines", lists of steps like switching input or output, loading an EQ or setting the
+subwoofer, stored on the device. The presets page reads which routine sits in each slot with
+UPnP `GetKeyMapping`, matches it to the routine definitions from `getAllRoutines`, and labels
+each tile by what it does. The input comes first, `line-in` or `ethernet`/`wi-fi` for streaming
+depending on how the WiiM connects, then a USB DAC output, and otherwise just `EQ`. Tapping a
+tile sends `MCUKeyShortClick:<slot>`, the same as pressing it in the WiiM Home app.
+
+The knob reads the list at boot and every 5 minutes after, so edits in the app show up on their
+own. The WiiM doesn't keep preset artwork on the device or say which preset is active, so the
+red border marks the last preset fired from the knob.
+
+## Recently played
+
+The WiiM Home app's recently played list lives in WiiM's cloud, so the knob keeps its own.
+Whenever a new album starts from a queue on the WiiM, the knob saves a copy of the queue with
+`BrowseQueue`, plus a 68px thumbnail, to LittleFS on the `spiffs` partition. The list survives
+deep sleep and reboots. Tapping a thumbnail hands the saved queue back with `CreateQueue` and
+starts it from the first track with `PlayQueueWithIndex`. `ReplaceQueue` looks like the right
+call, but it only swaps a queue that's already loaded, so it quietly restarted the current
+album.
+
+The knob identifies an album by its title plus its main artist, the most common artist across
+the saved tracks with "feat." guests ignored. The WiiM only reports the current track's artist,
+which can change within an album. On Daft Punk's *Random Access Memories* most tracks are "Daft
+Punk feat. ..." and one is credited to Thomas Bangalter alone, which used to save the same album
+several times.
+
+The page is off by default, and nothing gets recorded while it's off. Some limits:
+
+- Only sources that play from a queue on the WiiM show up. That means albums started from the
+  WiiM Home app, like Plex or Qobuz. Connect sources such as Qobuz Connect, Spotify Connect,
+  TIDAL Connect and AirPlay stream from another app with no queue on the device, so there's
+  nothing to save.
+- Qobuz stream links in a saved queue expire after some hours, so an old Qobuz entry may not
+  replay. Plex links point at your own server and keep working.
+- A saved queue holds whatever the WiiM had in it, which for Plex includes the server's access
+  token. It stays in the knob's flash and never goes to the log.
+
+## Knob and screen responsiveness
+
+Fast knob spins used to lag well behind your hand. There were two causes, both measured on the
+device.
+
+The knob was losing detents. The first decoder counted falling edges in an interrupt with a 5ms
+debounce per line. On a fast spin the edges ring, and both lines sometimes dip together for a
+moment. Logging showed about 85% of edges thrown away, and the both-low dips counted as one
+clockwise and one counter-clockwise detent, which cancel out. The decoder now samples both pins
+every 1ms on an `esp_timer` and only trusts a level held for 2ms. It counts a detent when exactly
+one line goes low from idle, ignores both-low, and waits for idle before the next one. The
+community teardown found the same thing: edge counting gave 37-41 per revolution, polling the
+levels gave exactly 30.
+
+Redraws were slow. With a simulated fast spin, a detent every 15ms on the full-screen art page,
+the volume readout went from 21.5 fps and 86ms from detent to screen to about 43 fps and 19ms.
+Here's what made the difference:
+
+- Restarting the readout's fade on every detent touched its opacity, which marked the whole
+  210px circle for redraw. Now only the digits and the changed slice of the ring redraw, and a
+  timer starts the fade once the knob has been still for a second. That alone halved the cost
+  of each frame.
+- A knob turn redraws right away with `lv_refr_now` instead of waiting for LVGL's next tick,
+  and the tick is 15ms instead of 30ms.
+- Album art decodes at the screen's full 360px, so the art page draws it 1:1 instead of scaling
+  it in software on every redraw.
+- The readout's circle is opaque. Blending a translucent one over the art cost about 5ms of each
+  20ms frame.
+- `loop()` pushes the WiiM's play state, connection and volume to the UI on every pass. The UI
+  now skips values that haven't changed instead of re-laying out text and refreshing styles.
+
+Full-screen swipes were limited by the transfer to the panel. Arduino_GFX sent 2KB at a time and
+waited on each chunk, which cost 28ms of every full-screen frame. Now a task on core 0 feeds the
+panel. It copies each band into two 8KB internal bounce buffers and sends them by DMA while LVGL
+renders the next band. DMA can't read PSRAM at this clock, hence the bounce buffers. With `-O2`
+as well, full-screen frames went from about 49ms to 28-40ms.
+
+Album art gets scaled once. The knob decodes each cover, box-filters it down to 360px or
+upscales small ones, and builds the tinted backdrop at the same time, so every art draw is 1:1.
+The art is double-buffered, so the screen never draws from a buffer that's being rewritten.
+
+One thing that didn't help: moving LVGL's draw buffers into internal RAM and sending them by DMA
+directly. Rendering on the CPU is the bottleneck, and it made no measurable difference.
+
+## Memory
+
+Internal RAM, about 320KB, is the scarce kind. Each WiiM TLS connection needs a big contiguous
+block of it, and album art downloads used to fail for lack of it. LVGL's 48KB object pool and the
+18KB JPEG decoder now live in the 8MB PSRAM. That left about 93KB of internal RAM free, with no
+measurable effect on frame times. `/status` reports the free internal heap and its low point.
+
+## Power management
+
+Any touch or knob turn resets all of these. You can change the timeouts on the Settings page,
+and the defaults come from `Config.h`.
+
+- **Hide controls**, after 8 seconds by default. The controls fade and leave the art.
+- **Dim**, 15 seconds before the screen turns off, to a quarter of the set brightness. Touching a
+  dimmed screen only brightens it. The touch doesn't reach the controls.
+- **Screen off**, after 70 seconds by default. The backlight goes off, Wi-Fi stays connected,
+  and the knob still changes volume. While the screen is dark the knob polls play state every 3
+  seconds, enough to keep the connection warm so a command still goes out at once. It stops
+  reading track info, since each read was a fresh TLS handshake, and catches up on wake. It also
+  checks touch every 20ms instead of 5ms and drops the CPU to 80MHz. A double-tap toggles
+  play/pause and leaves the screen off. A single tap wakes it to the art, and a knob turn wakes
+  it to the controls.
+- **Sleep**, after 10 minutes by default. The board deep-sleeps, which shuts down Wi-Fi and the
+  CPU. A touch or knob turn wakes it by pulsing one of three GPIOs the chip watches while asleep;
+  `src/power/Power.cpp` has the details. Before it sleeps, the panel controller goes into its own
+  sleep mode, the haptic driver goes into standby with its enable pin held low, and the current
+  cover saves to flash if it changed. Waking is a full reboot. The saved cover shows dimmed
+  while the knob reconnects to the access point it used last, skipping the scan, and the detent
+  that woke it counts as a volume step once the volume is known.
+- **On USB power** the knob stays awake. There's no screen-off or sleep, just the dim. Modem
+  sleep is off too, since it adds 100-400ms to every WiiM request, and status polls every half
+  second. It also stays reachable for over-the-air updates.
+- **Low battery.** If the voltage stays under the cutoff for 15 seconds, the knob shows "Battery
+  low" and sleeps. A wake within 0.05V of the cutoff goes straight back to sleep without starting
+  Wi-Fi. The cutoff is 3.45V until a calibration run learns one for your battery.
+- **Wi-Fi down at boot.** See [Getting it on your Wi-Fi](#getting-it-on-your-wi-fi).
+
+The board's other chip, the classic ESP32 running Waveshare's audio and Bluetooth firmware,
+keeps running through the S3's deep sleep. Nothing documented on the link between them can put
+it to sleep, so it's the most likely drain on a battery left asleep overnight.
+
+`/status` shows why the knob last booted and keeps a 16-entry boot log in NVS with the start
+reason, wake source, time asleep, and voltage at sleep and at wake. The log survives a flat
+battery. A 15-second loop watchdog reboots a hung firmware rather than leaving the screen lit.
+
+## Battery gauge
+
+The controls show a battery icon with a color-coded fill. The board has no fuel-gauge chip and
+no charger-status pin, so the level is an estimate. The comments in `src/power/Battery.h` and
+`Battery.cpp` go into more detail.
+
+The knob reads the voltage on `BATTERY_ADC_PIN`, GPIO1, which the community documented but
+Waveshare hasn't confirmed. It scales the reading by `BATTERY_DIVIDER_RATIO` and turns it into a
+percentage with a voltage curve. That's a generic LiPo curve until you calibrate. The raw
+voltage goes to the serial log on every poll as `[battery] ...`, so you can check the divider
+ratio against a multimeter.
+
+GPIO1 reads 4.66-4.84V on USB and the cell's own 3.9-4.2V on battery, so the pin sits on the
+supply rail rather than the cell. Anything above a full cell means USB power, and the icon shows
+a bolt. The threshold is 4.45V going on and 4.35V going off. The knob can't tell charging from
+full, and the percentage holds at its last battery reading while it's plugged in.
+
+### Calibration
+
+A battery's voltage curve depends on the cell and the load. The generic curve can read 90% for
+hours and then fall off a cliff. Settings -> Calibrate battery learns the real one:
+
+1. Charge fully, unplug, and turn the setting on. The knob stays awake with the screen on so the
+   load stays steady, and the battery icon's outline turns orange.
+2. It logs the voltage to flash once a minute, so a reboot or an update doesn't lose the run.
+3. The low-battery shutdown ends the run, and that point counts as 0%. The knob turns the log
+   into an 11-point curve, 100% down to 0% in steps of 10, and sets its low-battery cutoff a
+   little above where the battery gave out. Both are saved to NVS.
+4. Plugging in early cancels a run that hadn't got near empty and finishes one that had. If the
+   run ended in a reset instead of a clean shutdown, the next boot recovers the log.
+
+My battery's run took 222 minutes and settled on a 3.45V cutoff. `/status` shows the learned
+curve, the run length and the cutoff in use.
+
+## Haptics
+
+The board has a DRV2605L haptic driver on the touch controller's I2C bus at `0x5A`, enabled by
+GPIO38. According to the community teardown, the chip answers on I2C whatever that pin is doing,
+but its output stage stays off until GPIO38 goes high. Until then it feels like there's no motor
+at all. `src/haptics/Haptics.cpp` enables it, sets it up for LRA playback instead of the ERM
+default, and fires a short click on prev, play/pause and next, preset and album taps, and the
+double-tap play/pause.
+
+It skips the DRV2605L's calibration registers for rated voltage, overdrive clamp and auto-cal on
+purpose. The default click from the ROM library feels right on this board without them, and
+getting them wrong is how you end up quietly overdriving the motor.
+
+## Fonts
+
+The stock LVGL `lv_font_montserrat_16` and `_20` only include ASCII and the icon symbols. I
+checked their compiled-in glyph tables. Any accented character, the é or ö or ñ in a track or
+artist name, had no glyph to draw.
+
+`src/ui/fonts/` has three replacements, `lv_font_montserrat_16_latin`, `_18_latin` and
+`_20_latin`, used for the title, artist and the scrolling band. They come from the same
+Montserrat-Medium.ttf that LVGL's own build uses, with the range extended to Latin-1 Supplement
+and Latin Extended-A, `0x20-0x7F,0xA0-0x17F,0x2022`. That covers French, German, Spanish,
+Nordic, Polish, Czech and most other Western and Central European text. Each file's header has
+the exact `lv_font_conv` command if you need Cyrillic or Greek.
+
+Two more generated fonts sit alongside them. `lv_font_montserrat_96_digits` has just 0-9 for the
+big volume readout, since LVGL's built-in fonts stop at 48px. `lv_font_preset_icons_26` has four
+FontAwesome glyphs for the preset tiles.
 
 ## Project layout
 
 ```
 include/
   Pins.h            board pinout
-  Config.h.example  Wi-Fi + WiiM settings template (copy to Config.h)
+  Config.h.example  defaults and optional Wi-Fi/WiiM fallback (copy to Config.h)
   lv_conf.h         LVGL configuration
 src/
   main.cpp          setup/loop: Wi-Fi, polling, input wiring, OTA, the /status page
   display/          QSPI bus + ST77916 panel bring-up, DMA flush task, PWM backlight
-  haptics/          DRV2605L LRA haptic feedback
+  haptics/          DRV2605L haptic feedback
   input/            knob (pulse decoding) and touch (CST816D) drivers
   net/              saved Wi-Fi/WiiM config and the phone setup portal
-  power/            dim/screen-off/deep-sleep management, battery and USB-power detection
+  power/            dim/screen-off/deep-sleep, battery, USB-power detection, calibration
   settings/         the Settings page values, kept in NVS
-  wiim/             WiiM HTTP/UPnP client, the two network tasks, album art JPEG
-                    fetch/decode, and the recently played history
+  wiim/             WiiM HTTP/UPnP client, the two network tasks, album art fetch/decode,
+                    and the recently played history
   ui/               the LVGL pages and gesture navigation (UiSettings.cpp: settings,
                     network and setup screens)
-    fonts/            regenerated fonts with accented-character support (see Fonts above),
-                      plus a small icon font for the preset tiles
+    fonts/            regenerated fonts with accented-character support, plus icon fonts
 ```
 
 ## Ideas for next steps
 
-- **Multiroom awareness**: the WiiM API exposes multiroom group info; the UI doesn't show or
-  control it yet.
-- **Charging vs full**: USB power is detected from the supply rail, but the board has no
-  charger-status pin to tell charging from a full battery. Probing the charge IC for one would
-  allow a real "charged" state.
-- **Play/pause state for Connect sources**: Qobuz Connect reports its status as "none"
-  whether playing or paused, so the knob infers it from whether the track position is moving
-  (the icon catches up ~2s after pausing). Other Connect sources may behave the same way.
-- **Wider Unicode coverage**: the regenerated fonts (see Fonts above) cover Western/Central
-  European accents but not Cyrillic, Greek, or CJK — extend the `lv_font_conv` range if you
-  need those.
+- **Multiroom.** The WiiM API exposes multiroom groups, and the knob doesn't show or control
+  them yet.
+- **Charging vs full.** The knob spots USB power from the supply rail, but with no
+  charger-status pin it can't tell charging from a full battery. Probing the charge IC for one
+  would give a real "charged" state.
+- **Play/pause for Connect sources.** Qobuz Connect reports "none" whether it's playing or
+  paused, so the knob guesses from whether the track position is moving. The icon catches up
+  about 2 seconds after a pause. Other Connect sources may do the same.
+- **More scripts.** The fonts cover Western and Central European accents but not Cyrillic,
+  Greek or CJK. Extending the `lv_font_conv` range would add them.
 
 ## Credits
 
