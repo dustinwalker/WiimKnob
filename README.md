@@ -13,7 +13,7 @@ volume, and a swipe skips the track. It's a fork of
 
 Most of the time you just see the cover. Tap the screen, turn the knob or wake it, and the
 controls come up over a darkened copy of the art, tinted with the cover's own color. You get the
-volume in big digits with a red ring, the title, artist and album, prev, play/pause and next, and
+volume in big digits with a red ring, the title and artist, prev, play/pause and next, and
 a battery icon.
 
 Leave it alone for a few seconds and the controls fade. As they go, a band with the scrolling

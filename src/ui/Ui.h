@@ -37,7 +37,7 @@ void setRecent(const RecentTile *tiles, int count);
 // Rebuilds the presets screen's tile grid (text is copied, so the caller's strings can go away).
 void setPresets(const PresetTile *tiles, int count);
 
-void setTrack(const char *title, const char *artist, const char *album);
+void setTrack(const char *title, const char *artist);
 // art nullptr shows a black backdrop with the controls always up; tinted is the backdrop used
 // while the controls are showing (falls back to art). accent (0xRRGGBB) colors the progress ring.
 void setAlbumArt(const lv_img_dsc_t *art, const lv_img_dsc_t *tinted, uint32_t accent = 0xFFFFFF);

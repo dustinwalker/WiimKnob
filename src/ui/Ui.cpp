@@ -58,7 +58,6 @@ lv_obj_t *volumeArc = nullptr;
 lv_obj_t *volumeLabel = nullptr;
 lv_obj_t *titleLabel = nullptr;
 lv_obj_t *artistLabel = nullptr;
-lv_obj_t *albumLabel = nullptr;
 lv_obj_t *playPauseIcon = nullptr;
 lv_obj_t *statusDot = nullptr;
 lv_obj_t *batteryBadge = nullptr;      // clickable: taps toggle icon <-> percent
@@ -731,16 +730,6 @@ void begin(const Callbacks &cbs) {
   lv_obj_align(artistLabel, LV_ALIGN_CENTER, 0, 46);
   lv_label_set_text(artistLabel, "");
 
-  // Under the media buttons, where the circle is only ~160px wide.
-  albumLabel = lv_label_create(ctrl);
-  lv_obj_set_width(albumLabel, 150);
-  lv_label_set_long_mode(albumLabel, LV_LABEL_LONG_SCROLL_CIRCULAR);
-  lv_obj_set_style_text_align(albumLabel, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_set_style_text_font(albumLabel, &lv_font_montserrat_16_latin, 0);
-  lv_obj_set_style_text_color(albumLabel, lv_color_hex(0x9a9a9a), 0);
-  lv_obj_align(albumLabel, LV_ALIGN_CENTER, 0, 152);
-  lv_label_set_text(albumLabel, "");
-
   lv_obj_t *controlBar = lv_obj_create(ctrl);
   lv_obj_set_size(controlBar, 250, 76);
   lv_obj_set_style_bg_opa(controlBar, LV_OPA_TRANSP, 0);
@@ -900,11 +889,10 @@ void setRecentEnabled(bool enabled) {
   layoutPageDots();
 }
 
-void setTrack(const char *title, const char *artist, const char *album) {
+void setTrack(const char *title, const char *artist) {
   endSkip();
   lv_label_set_text(titleLabel, (title && title[0]) ? title : "Not playing");
   lv_label_set_text(artistLabel, artist ? artist : "");
-  lv_label_set_text(albumLabel, album ? album : "");
 
   if (title && title[0] && artist && artist[0]) {
     lv_label_set_text_fmt(tickerLabel, "%s \xE2\x80\xA2 %s", title, artist); // U+2022 bullet
