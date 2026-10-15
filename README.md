@@ -68,18 +68,23 @@ While Roon is the WiiM's source:
 - Track info and covers come from Roon. Roon announces a track change the moment it happens and
   serves the cover at exactly the screen's size, so the new cover shows up almost with the title.
 - Skip and play/pause go to Roon, and the progress ring follows Roon's position.
+- Shuffle and repeat buttons sit either side of the battery icon on the controls. White means on.
+  Repeat cycles off, all and one, and shows a small 1 for one.
 - Volume still goes straight to the WiiM, whatever's playing.
 
-The Library page has three tabs:
+The Library page has four tabs:
 
 - **History** lists every track that played on the WiiM's zone while the knob was connected,
   newest first, with small covers. Roon's API has no history of its own, so the knob keeps this
   list in flash, up to 100 tracks. Tapping one finds the track again through Roon's library
   search and plays it.
+- **Up next** is Roon's queue for the zone, starting with what's playing. Tapping a track jumps
+  to it.
 - **Playlists** lists your Roon playlists. Tapping one plays it.
 - **Radio** lists the stations in My Live Radio. Tapping one plays it.
 
-After a tap the knob goes back to Now playing.
+After a tap the knob goes back to Now playing and shows what you picked straight away, with the
+art dimmed until Roon starts it.
 
 The history only covers what plays while the knob is connected. On battery it disconnects when
 the screen goes dark, so anything played from your phone while the knob sleeps is missing. On USB
@@ -502,8 +507,8 @@ scripts/
 - **Play/pause for Connect sources.** Qobuz Connect reports "none" whether it's playing or
   paused, so the knob guesses from whether the track position is moving. The icon catches up
   about 2 seconds after a pause. Other Connect sources may do the same.
-- **More from Roon.** Shuffle and repeat toggles, "Start Radio" from the current track, and
-  browsing albums are all in the browse and transport APIs the knob already uses.
+- **More from Roon.** "Start Radio" from the current track and browsing albums are both in the
+  browse API the knob already uses.
 - **Rare characters.** The CJK font only holds the common sets, so an uncommon character in a
   name shows as a blank. Arabic, Hebrew, Thai and the Indic scripts aren't covered at all, and
   Arabic and Hebrew would also need right-to-left layout.
