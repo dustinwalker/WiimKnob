@@ -3,21 +3,27 @@
 ![WiimKnob banner](docs/banner.webp)
 
 Firmware for the [Waveshare ESP32-S3-Knob-Touch-LCD-1.8](https://www.waveshare.com/esp32-s3-knob-touch-lcd-1.8.htm)
-that turns it into a small WiiM remote:
+that turns it into a small WiiM remote. This is a fork of
+[xon94010/WiimKnob](https://github.com/xon94010/WiimKnob); see **Credits** at the end.
 
 - **Album art is the home screen.** A tap, a knob turn or waking the screen brings the controls
   up over a darkened copy of the art, tinted with the cover's own color: volume in big digits
   with a red ring around the edge, title/artist/album, prev/play-pause/next, and a battery
-  icon. After a few seconds without input the controls fade and the art is left with a
-  scrolling "title • artist" line and a thin progress ring.
-- With only the art showing, swipe left/right to skip tracks. A spinner shows until the WiiM
-  reports the new track, and the old art dims until the new cover has downloaded.
+  icon. After a few seconds without input the controls fade and the art is left with two
+  things: a scrolling "title • artist" band that crossfades in as the controls go, and a
+  progress ring around the edge.
+- The progress ring takes the cover's strongest color (white for gray covers) over a dark band
+  of the same hue, and glides as the track plays instead of ticking once a second.
+- With only the art showing, swipe left/right to skip tracks. A ⏭/⏮ flash with a spinner shows
+  until the WiiM reports the new track. The old art then holds at 70% dim with three bouncing
+  dots until the new cover has downloaded, and the new cover fades in.
 - Turn the knob to change volume, with a light haptic buzz on taps via the board's DRV2605L.
 - Five swipeable pages: **Now playing**, **Recently played** (hidden unless turned on in
   Settings), **Presets**, **Settings** and **Network**. Tap the art first to bring up the
   controls, then swipe to change pages.
 - **Settings** (tap a row, turn the knob to adjust; saved in flash): brightness, how long the
-  controls stay up, screen-off and sleep timeouts, and the Recently played page.
+  controls stay up, screen-off and sleep timeouts, the Recently played page, and battery
+  calibration.
 - **Network** shows the Wi-Fi name, IP, signal and WiiM, and holds the Wi-Fi setup button. Setup
   runs from your phone: the knob opens its own network with a QR code, and a page there picks
   the Wi-Fi network and the WiiM to control. It also opens by itself if the saved network
@@ -26,7 +32,10 @@ that turns it into a small WiiM remote:
   to 80MHz while it's dark, and the board deep-sleeps after a longer timeout. On USB power it
   stays awake and dims instead of turning off. Double-tapping the dark screen plays/pauses
   without waking it.
-- Over-the-air updates, and a read-only status page at `http://wiimknob.local/status`.
+- Learns its own battery: one calibration run from full to empty replaces the generic LiPo
+  curve and sets the low-battery cutoff (see **Battery gauge**).
+- Over-the-air updates, and a read-only status page at `http://wiimknob.local/status` (Wi-Fi,
+  memory, battery, the learned curve and a boot log).
 - Handles accented/non-ASCII track and artist names correctly (see **Fonts** below) — the
   stock LVGL fonts only cover plain ASCII.
 
@@ -227,8 +236,9 @@ the defaults come from `Config.h`.
 - **On USB power** the knob stays awake: no screen-off or sleep (the screen dims instead), no
   modem sleep (which adds 100-400ms to every WiiM request), and status polls every 0.5s. That
   also keeps it reachable for over-the-air updates.
-- **Low battery:** below 3.45V for 15s it shows "Battery low" and sleeps; a wake below 3.5V goes
-  straight back to sleep without starting Wi-Fi.
+- **Low battery:** below the cutoff for 15s it shows "Battery low" and sleeps; a wake within
+  0.05V of the cutoff goes straight back to sleep without starting Wi-Fi. The cutoff is 3.45V
+  until a calibration run learns one for this battery.
 - **Wi-Fi unreachable at boot:** it offers setup for 30s (tap the screen), then sleeps and
   retries after 5, 10, 20 and then every 30 minutes. The setup network only opens by itself when
   no network has ever been saved.
@@ -277,13 +287,29 @@ no fuel-gauge chip and no charger-status pin, so the level is an estimate — se
 
 - **Level**: read from `BATTERY_ADC_PIN` (GPIO1, a community-documented but Waveshare-unverified
   candidate for the battery sense pin) and converted through `BATTERY_DIVIDER_RATIO` and a
-  generic LiPo voltage curve. Both the pin and the ratio need calibrating against a multimeter
+  voltage curve: a generic LiPo one until a calibration run replaces it. Both the pin and the ratio need calibrating against a multimeter
   reading of your actual battery — the raw voltage is logged over serial every poll
   (`[battery] ...`) specifically so you can do that.
 - **USB power**: GPIO1 measured 4.66-4.84V on USB and the cell's own 3.9-4.2V on battery, so the
   pin sits on the supply rail rather than the cell. Anything above a full cell (4.45V on, 4.35V
   off) means USB power, shown as a bolt on the icon. It can't tell charging from full, and the
   percentage holds at its last battery reading while plugged in.
+
+### Calibration
+
+A cell's voltage curve depends on the cell and the load, so the generic one can read 90% for
+hours and then fall away. **Settings -> Calibrate battery** learns the real one:
+
+1. Charge fully, unplug, and turn the setting on. The knob stays awake with the screen on, a
+   steady load, and the battery icon's outline turns orange.
+2. It logs the voltage once a minute to flash, so the run survives a reboot or an update.
+3. The low-battery shutdown ends the run, and that point counts as 0%. The knob turns the log
+   into an 11-point curve (100%, 90% ... 0%) and sets its low-battery cutoff a little above
+   where the battery gave out. Both live in NVS.
+4. Plugging in early aborts a run that hadn't reached near-empty, and finishes one that had.
+   If the run ended in a reset instead of a clean shutdown, the next boot rescues the log.
+
+`/status` shows the learned curve, the run length and the cutoff in use.
 
 ## Setup
 
@@ -371,3 +397,9 @@ src/
 - **Wider Unicode coverage**: the regenerated fonts (see Fonts above) cover Western/Central
   European accents but not Cyrillic, Greek, or CJK — extend the `lv_font_conv` range if you
   need those.
+
+## Credits
+
+The original WiimKnob firmware, the banner and the screenshots are by
+[xon94010](https://github.com/xon94010/WiimKnob). The board pinout and panel bring-up come from
+the [teetotum-rs community teardown](https://github.com/teetotum-rs/firmware/blob/main/docs/hardware/).
