@@ -117,6 +117,8 @@ void begin() {
     uint64_t pins = esp_sleep_get_ext1_wakeup_status();
     bootInfo.wakeSource = (pins & (1ULL << PIN_TOUCH_INT)) ? "touch" : "knob";
     bootWake = (pins & (1ULL << PIN_TOUCH_INT)) ? 2 : 1;
+    if (pins & (1ULL << PIN_KNOB_CW)) bootInfo.wakeDetent = 1;
+    else if (pins & (1ULL << PIN_KNOB_CCW)) bootInfo.wakeDetent = -1;
   } else if (reset == ESP_RST_DEEPSLEEP && esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER) {
     bootInfo.wakeSource = "timer";
     bootWake = 3;

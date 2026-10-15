@@ -386,7 +386,8 @@ void serviceNetworkInfo() {
 // protected struct copies), so it's fine to call every loop() iteration -- no polling timer of
 // its own needed here, since wiim::task owns that cadence.
 void syncUiFromWiimTask() {
-  ui::setConnected(wiim::task::isConnected());
+  bool connected = wiim::task::isConnected(); // read before the state, so a true here means a real volume below
+  ui::setConnected(connected);
 
   wiim::PlayerState state = wiim::task::getPlayerState();
   ui::setPlaying(state.status == "play");
@@ -397,6 +398,17 @@ void syncUiFromWiimTask() {
   if (millis() - lastKnobActivityMs > 1500) {
     localVolume = state.volume;
     ui::setVolume(localVolume);
+  }
+
+  // The detent that woke the knob, applied once the real volume is known.
+  static int wakeDetent = power::lastBoot().wakeDetent;
+  if (wakeDetent && connected) {
+    lastKnobActivityMs = millis();
+    localVolume = constrain(localVolume + wakeDetent * VOLUME_STEP_PER_DETENT, 0, 100);
+    wakeDetent = 0;
+    ui::setVolume(localVolume);
+    ui::showControls();
+    wiim::task::requestVolume(localVolume);
   }
 
   uint32_t version = wiim::task::metadataVersion();

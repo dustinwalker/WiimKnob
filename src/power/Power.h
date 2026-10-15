@@ -8,7 +8,8 @@ namespace power {
 // Why this boot happened, and what the previous deep sleep looked like (if there was one).
 struct BootInfo {
   const char *resetReason = "";  // "power-on", "deep-sleep wake", "crash", "brownout", ...
-  const char *wakeSource = "";   // "knob", "touch" or "none"
+  const char *wakeSource = "";   // "knob", "touch", "timer" or "none"
+  int wakeDetent = 0;            // +1 / -1: the knob turn that woke it (otherwise lost to the reboot)
   int64_t sleptSeconds = -1;     // -1: no deep sleep recorded (fresh power-on)
   float sleepVolts = 0;          // battery voltage as it went to sleep
   const char *sleepReason = "";
