@@ -36,9 +36,9 @@ Tap the art to bring up the controls, then swipe sideways between Now playing, L
 played, Presets, Settings and Network. Library appears once Roon has approved the knob, and
 Recently played stays hidden until you turn it on in Settings.
 
-On the Settings page you tap a row and turn the knob to change it. It has brightness, how long
-the controls stay up, the screen-off and sleep timeouts, the Recently played page, and battery
-calibration. Everything saves to flash.
+On the Settings page you tap a row and turn the knob to change it, and tapping an on/off row
+flips it. It has brightness, how long the controls stay up, the screen-off and sleep timeouts,
+the Recently played page, battery calibration and the Roon zone. Everything saves to flash.
 
 The Network page shows the Wi-Fi name, IP address, signal and which WiiM it controls, and has
 the button for setting up Wi-Fi again.
@@ -60,7 +60,8 @@ the button for setting up Wi-Fi again.
 I mostly play to my WiiM Amp from Roon, so the knob also talks to the Roon Core directly. It
 finds the Core on its own, and you approve it once in Roon under Settings -> Extensions, where
 it's listed as "WiimKnob (" plus your WiiM's name. Then it works out which Roon zone feeds the
-WiiM by matching the track title the WiiM reports, and remembers it.
+WiiM by matching the track title the WiiM reports, and remembers it. To choose the zone
+yourself, turn the Roon zone row in Settings from Automatic to the zone's name.
 
 While Roon is the WiiM's source:
 
