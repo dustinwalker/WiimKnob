@@ -84,10 +84,29 @@ void onRecent(int slot) {
   wiim::task::requestRecent(slot);
   haptics::buzz();
 }
+// Shown from a Library tap until the WiiM reports a different track: Roon's lookup takes a second
+// or two, and the old track sitting there looked like the tap hadn't worked.
+struct PendingPlay {
+  bool active = false;
+  String fromTitle;
+  uint32_t startedMs = 0;
+} pendingPlay;
+constexpr uint32_t kPendingPlayMaxMs = 12000;
+roon::Row *libraryRows[roon::kListCount] = {};
+int libraryCounts[roon::kListCount] = {};
+
 void onLibraryItem(int tab, int index) {
   roon::requestPlay((roon::List)tab, index);
   haptics::buzz();
   ui::showNowPlaying();
+  if (tab < 0 || tab >= roon::kListCount || index < 0 || index >= libraryCounts[tab]) return;
+  const roon::Row &row = libraryRows[tab][index];
+  pendingPlay.active = true;
+  pendingPlay.fromTitle = wiim::task::getMetadata().title;
+  pendingPlay.startedMs = millis();
+  ui::hideControlsNow();
+  ui::setTrack(row.title, tab == ui::kLibraryHistory ? row.subtitle : "");
+  ui::setArtPending(true);
 }
 void onLibraryTab(int tab) {
   static uint32_t lastRefreshMs = 0;
@@ -467,10 +486,18 @@ void syncUiFromWiimTask() {
   }
 
   uint32_t version = wiim::task::metadataVersion();
-  if (version) ui::setArtPending(wiim::task::isArtPending()); // until then, keep the boot cover dimmed
+  if (pendingPlay.active && millis() - pendingPlay.startedMs > kPendingPlayMaxMs) {
+    pendingPlay.active = false;
+    lastSeenMetaVersion = version - 1; // put back what's really playing
+  }
+  if (version) ui::setArtPending(pendingPlay.active || wiim::task::isArtPending()); // until then, keep the boot cover dimmed
   if (version != lastSeenMetaVersion) {
     lastSeenMetaVersion = version;
     wiim::TrackMetadata meta = wiim::task::getMetadata();
+    if (pendingPlay.active) {
+      if (meta.title == pendingPlay.fromTitle) return;
+      pendingPlay.active = false;
+    }
     ui::setTrack(meta.title.c_str(), meta.artist.c_str());
     ui::setAlbumArt(wiim::task::getAlbumArt(), wiim::task::getAlbumArtTinted(), wiim::task::getAlbumArtAccent());
   }
@@ -478,14 +505,14 @@ void syncUiFromWiimTask() {
 
 // Rebuilds a Library tab only when its rows changed, and fills in thumbnails as they arrive.
 void syncLibrary() {
-  static roon::Row *rows[roon::kListCount] = {};
+  roon::Row **rows = libraryRows;
+  int *counts = libraryCounts;
   static roon::Row *fresh = nullptr;
-  static int counts[roon::kListCount] = {};
   static bool hasThumb[roon::kListCount][roon::kMaxRows] = {};
   static uint32_t seenLists = UINT32_MAX, seenThumbs = 0;
   ui::setLibraryEnabled(roon::paired());
   if (!rows[0]) {
-    for (roon::Row *&r : rows) r = (roon::Row *)heap_caps_calloc(roon::kMaxRows, sizeof(roon::Row), MALLOC_CAP_SPIRAM);
+    for (roon::Row *&r : libraryRows) r = (roon::Row *)heap_caps_calloc(roon::kMaxRows, sizeof(roon::Row), MALLOC_CAP_SPIRAM);
     fresh = (roon::Row *)heap_caps_calloc(roon::kMaxRows, sizeof(roon::Row), MALLOC_CAP_SPIRAM);
   }
   if (roon::listsVersion() != seenLists) {
