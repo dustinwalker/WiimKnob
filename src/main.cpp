@@ -2,6 +2,7 @@
 #include <ArduinoOTA.h>
 #include <WebServer.h>
 #include <WiFi.h>
+#include <esp_task_wdt.h>
 #include <lvgl.h>
 
 #include "Config.h"
@@ -232,6 +233,7 @@ void beginOta() {
   });
   ArduinoOTA.onProgress([](unsigned int done, unsigned int total) {
     power::noteActivity(); // don't time out into deep sleep mid-update
+    feedLoopWDT();         // ArduinoOTA.handle() blocks loop() for the whole transfer
   });
   ArduinoOTA.onEnd([]() { Serial.println("[ota] done, rebooting"); });
   ArduinoOTA.onError([](ota_error_t err) {
@@ -556,6 +558,15 @@ void setup() {
   beginStatusServer();
 
   wiim::task::begin(netConfig.wiimHost);
+
+  // A hung loop() would otherwise leave the screen lit until the battery dies; this reboots it
+  // (logged as "watchdog" in the boot log). Arduino feeds it once per loop() pass.
+  esp_task_wdt_config_t wdt = {};
+  wdt.timeout_ms = 15000;
+  wdt.idle_core_mask = 1 << 0; // keep the framework's existing core-0 idle check
+  wdt.trigger_panic = true;
+  esp_task_wdt_reconfigure(&wdt);
+  enableLoopWDT();
 }
 
 void loop() {
