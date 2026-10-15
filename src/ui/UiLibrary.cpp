@@ -45,7 +45,7 @@ void onRowClicked(lv_event_t *e) {
 
 lv_obj_t *makeLabel(lv_obj_t *row, const char *text, uint32_t color, lv_align_t align, int y) {
   lv_obj_t *label = lv_label_create(row);
-  lv_obj_set_width(label, 192);
+  lv_obj_set_size(label, 192, lv_font_get_line_height(&lv_font_montserrat_16_latin)); // DOT only truncates at a fixed height
   lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
   lv_obj_set_style_text_font(label, &lv_font_montserrat_16_latin, 0);
   lv_obj_set_style_text_color(label, lv_color_hex(color), 0);
@@ -76,6 +76,7 @@ void detail::buildLibraryScreen() {
     lv_obj_set_style_border_width(list, 0, 0);
     lv_obj_set_style_pad_all(list, 0, 0);
     lv_obj_set_style_pad_row(list, 6, 0);
+    lv_obj_set_style_pad_bottom(list, 40, 0); // lets the last row scroll up clear of the curved edge
     lv_obj_set_flex_flow(list, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(list, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_scroll_dir(list, LV_DIR_VER);
