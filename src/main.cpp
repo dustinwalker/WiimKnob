@@ -12,6 +12,7 @@
 #include "input/Touch.h"
 #include "net/NetConfig.h"
 #include "roon/Roon.h"
+#include "roon/Thumbs.h"
 #include "net/SetupPortal.h"
 #include "power/Battery.h"
 #include "power/BatteryCal.h"
@@ -54,16 +55,25 @@ void touchReadCb(lv_indev_drv_t *drv, lv_indev_data_t *data) {
   }
 }
 
+// Roon owns the queue when it's the source, so its transport is the one that knows what's next.
+bool roonIsSource() {
+  roon::Zone zone;
+  return roon::sourceZone(zone);
+}
+
 void onPrev() {
-  wiim::task::requestPrevious();
+  if (roonIsSource()) roon::requestControl("previous");
+  else wiim::task::requestPrevious();
   haptics::buzz();
 }
 void onNext() {
-  wiim::task::requestNext();
+  if (roonIsSource()) roon::requestControl("next");
+  else wiim::task::requestNext();
   haptics::buzz();
 }
 void onPlayPause() {
-  wiim::task::requestTogglePause();
+  if (roonIsSource()) roon::requestControl("playpause");
+  else wiim::task::requestTogglePause();
   haptics::buzz();
 }
 void onPreset(int key) {
@@ -73,6 +83,18 @@ void onPreset(int key) {
 void onRecent(int slot) {
   wiim::task::requestRecent(slot);
   haptics::buzz();
+}
+void onLibraryItem(int tab, int index) {
+  roon::requestPlay((roon::List)tab, index);
+  haptics::buzz();
+  ui::showNowPlaying();
+}
+void onLibraryTab(int tab) {
+  static uint32_t lastRefreshMs = 0;
+  if (tab != ui::kLibraryHistory && millis() - lastRefreshMs > 30000) {
+    lastRefreshMs = millis();
+    roon::requestRefreshLists();
+  }
 }
 
 int selectedSetting = settings::kBrightness;
@@ -404,8 +426,21 @@ void syncUiFromWiimTask() {
   ui::setConnected(connected);
 
   wiim::PlayerState state = wiim::task::getPlayerState();
-  ui::setPlaying(state.status == "play");
-  ui::setProgress(state.positionMs, state.durationMs, state.status == "play");
+  static roon::Zone roonZone;
+  static bool roonSource = false;
+  static uint32_t lastRoonCheckMs = 0;
+  if (millis() - lastRoonCheckMs > 250) {
+    lastRoonCheckMs = millis();
+    roonSource = roon::sourceZone(roonZone) && roonZone.lengthS > 0;
+  }
+  if (roonSource) {
+    bool playing = roonZone.state == "playing";
+    ui::setPlaying(playing);
+    ui::setProgress(max(0L, roonZone.seekS) * 1000, roonZone.lengthS * 1000, playing);
+  } else {
+    ui::setPlaying(state.status == "play");
+    ui::setProgress(state.positionMs, state.durationMs, state.status == "play");
+  }
 
   // Don't fight the knob: if the user just turned it, our optimistic local value is more
   // current than whatever the device reports until it catches up.
@@ -432,6 +467,48 @@ void syncUiFromWiimTask() {
     wiim::TrackMetadata meta = wiim::task::getMetadata();
     ui::setTrack(meta.title.c_str(), meta.artist.c_str());
     ui::setAlbumArt(wiim::task::getAlbumArt(), wiim::task::getAlbumArtTinted(), wiim::task::getAlbumArtAccent());
+  }
+}
+
+// Rebuilds a Library tab only when its rows changed, and fills in thumbnails as they arrive.
+void syncLibrary() {
+  static roon::Row *rows[roon::kListCount] = {};
+  static roon::Row *fresh = nullptr;
+  static int counts[roon::kListCount] = {};
+  static bool hasThumb[roon::kListCount][roon::kMaxRows] = {};
+  static uint32_t seenLists = UINT32_MAX, seenThumbs = 0;
+  ui::setLibraryEnabled(roon::paired());
+  if (!rows[0]) {
+    for (roon::Row *&r : rows) r = (roon::Row *)heap_caps_calloc(roon::kMaxRows, sizeof(roon::Row), MALLOC_CAP_SPIRAM);
+    fresh = (roon::Row *)heap_caps_calloc(roon::kMaxRows, sizeof(roon::Row), MALLOC_CAP_SPIRAM);
+  }
+  if (roon::listsVersion() != seenLists) {
+    seenLists = roon::listsVersion();
+    static ui::LibraryRow out[roon::kMaxRows];
+    for (int tab = 0; tab < roon::kListCount; tab++) {
+      int n = roon::copyList((roon::List)tab, fresh, roon::kMaxRows);
+      if (n == counts[tab] && memcmp(fresh, rows[tab], n * sizeof(roon::Row)) == 0) continue;
+      memcpy(rows[tab], fresh, n * sizeof(roon::Row));
+      counts[tab] = n;
+      for (int i = 0; i < n; i++) {
+        const lv_img_dsc_t *thumb = roon::thumbs::get(rows[tab][i].imageKey);
+        hasThumb[tab][i] = thumb != nullptr;
+        out[i] = {rows[tab][i].title, rows[tab][i].subtitle, thumb};
+      }
+      ui::setLibraryRows(tab, out, n);
+    }
+  }
+  if (roon::thumbs::version() != seenThumbs) {
+    seenThumbs = roon::thumbs::version();
+    for (int tab = 0; tab < roon::kListCount; tab++) {
+      for (int i = 0; i < counts[tab]; i++) {
+        if (hasThumb[tab][i]) continue;
+        const lv_img_dsc_t *thumb = roon::thumbs::get(rows[tab][i].imageKey);
+        if (!thumb) continue;
+        hasThumb[tab][i] = true;
+        ui::setLibraryThumb(tab, i, thumb);
+      }
+    }
   }
 }
 
@@ -482,7 +559,7 @@ void applyPollRates() {
 void onScreenChange(bool on) {
   applyPollRates();
   if (on) wiim::task::requestMetadataRefresh();
-  roon::setActive(on);
+  roon::setActive(on || onExternalPower);
 }
 
 void applyPowerSource(bool external) {
@@ -490,6 +567,7 @@ void applyPowerSource(bool external) {
   power::setExternalPower(external);
   WiFi.setSleep(!external);
   applyPollRates();
+  roon::setActive(power::isScreenOn() || external); // on USB, history keeps recording in the dark
   Serial.printf("[power] %s\n", external ? "USB power: staying awake" : "on battery");
 }
 
@@ -562,7 +640,8 @@ void setup() {
 
   display::begin();
 
-  ui::Callbacks callbacks = {onPrev, onNext, onPlayPause, onPreset, onRecent, onSettingTapped, onWifiSetup};
+  ui::Callbacks callbacks = {onPrev, onNext, onPlayPause, onPreset, onRecent, onSettingTapped, onWifiSetup,
+                                onLibraryItem, onLibraryTab};
   ui::begin(callbacks);
 
   settings::begin();
@@ -627,7 +706,8 @@ void setup() {
   beginStatusServer();
 
   wiim::task::begin(netConfig.wiimHost);
-  roon::begin();
+  roon::begin(netConfig.wiimName.length() ? netConfig.wiimName : netConfig.wiimHost);
+  roon::thumbs::begin();
 
   // A hung loop() would otherwise leave the screen lit until the battery dies; this reboots it
   // (logged as "watchdog" in the boot log). Arduino feeds it once per loop() pass.
@@ -660,6 +740,7 @@ void loop() {
   syncUiFromWiimTask();
   syncPresets();
   syncRecent();
+  if (screenOn) syncLibrary();
   serviceBattery();
   power::service();
   settings::service();
