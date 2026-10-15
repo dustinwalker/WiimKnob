@@ -30,10 +30,11 @@ With only the art showing, swipe left or right to change tracks. A ⏭ or ⏮ fl
 stays up until the WiiM reports the new track. Then the old cover sits at 70% dim with three
 bouncing dots until the new one has downloaded, and the new cover fades in.
 
-### Five pages
+### Pages
 
-Tap the art to bring up the controls, then swipe sideways between Now playing, Recently played,
-Presets, Settings and Network. Recently played stays hidden until you turn it on in Settings.
+Tap the art to bring up the controls, then swipe sideways between Now playing, Library, Recently
+played, Presets, Settings and Network. Library appears once Roon has approved the knob, and
+Recently played stays hidden until you turn it on in Settings.
 
 On the Settings page you tap a row and turn the knob to change it. It has brightness, how long
 the controls stay up, the screen-off and sleep timeouts, the Recently played page, and battery
@@ -54,21 +55,41 @@ the button for setting up Wi-Fi again.
 - Track names draw in most of the world's scripts: accented Latin, Vietnamese, Cyrillic, Greek,
   Chinese, Japanese and Korean. The stock LVGL fonts only cover plain ASCII.
 
-### A note on Roon
+### Roon
 
-I mostly play to my WiiM Amp from Roon, so that's what this fork gets tested with. The knob only
-talks to the WiiM, never to Roon, and a few things come out differently:
+I mostly play to my WiiM Amp from Roon, so the knob also talks to the Roon Core directly. It
+finds the Core on its own, and you approve it once in Roon under Settings -> Extensions, where
+it's listed as "WiimKnob (" plus your WiiM's name. Then it works out which Roon zone feeds the
+WiiM by matching the track title the WiiM reports, and remembers it.
 
-- Volume, play/pause, skipping and the progress ring work, since they all go through the WiiM.
-- New covers lag. When Roon changes tracks, the WiiM reports the new title first and the new
-  cover link a poll or two later. That gap is why the old art dims with bouncing dots while it
-  waits.
-- Recently played stays empty. Roon streams to the WiiM without a queue on the device, so there's
-  nothing to save or replay.
-- Firing a preset that switches the WiiM's input takes it away from Roon, the same as it would
-  from the WiiM Home app.
+While Roon is the WiiM's source:
 
-If you use the WiiM Home app instead, everything above works as described.
+- Track info and covers come from Roon. Roon announces a track change the moment it happens and
+  serves the cover at exactly the screen's size, so the new cover shows up almost with the title.
+- Skip and play/pause go to Roon, and the progress ring follows Roon's position.
+- Volume still goes straight to the WiiM, whatever's playing.
+
+The Library page has three tabs:
+
+- **History** lists every track that played on the WiiM's zone while the knob was connected,
+  newest first, with small covers. Roon's API has no history of its own, so the knob keeps this
+  list in flash, up to 100 tracks. Tapping one finds the track again through Roon's library
+  search and plays it.
+- **Playlists** lists your Roon playlists. Tapping one plays it.
+- **Radio** lists the stations in My Live Radio. Tapping one plays it.
+
+After a tap the knob goes back to Now playing.
+
+The history only covers what plays while the knob is connected. On battery it disconnects when
+the screen goes dark, so anything played from your phone while the knob sleeps is missing. On USB
+power it stays connected with the screen off, which catches nearly everything.
+
+Each knob registers under its own name and learns its own zone, so a second knob on another WiiM
+needs nothing extra. Approve it in Roon the same way.
+
+Recently played doesn't work with Roon: Roon streams to the WiiM without a queue on the device,
+so there's nothing to save. Firing a preset that switches the WiiM's input takes it away from
+Roon, the same as it would from the WiiM Home app.
 
 ## Screenshots
 
@@ -320,6 +341,11 @@ block of it, and album art downloads used to fail for lack of it. LVGL's 48KB ob
 18KB JPEG decoder now live in the 8MB PSRAM. That left about 93KB of internal RAM free, with no
 measurable effect on frame times. `/status` reports the free internal heap and its low point.
 
+The Roon client costs about 30KB of that, mostly the stacks of its two tasks, which leaves about
+65KB free. Everything else it keeps goes in PSRAM: the zone messages, the history and playlist
+rows, 160 cached 48px covers, and LVGL's object pool, now 256KB so a hundred list rows fit.
+Roon's connection and its cover downloads are plain HTTP on the LAN, so they need no TLS memory.
+
 ## Power management
 
 Any touch or knob turn resets all of these. You can change the timeouts on the Settings page,
@@ -456,8 +482,10 @@ src/
   settings/         the Settings page values, kept in NVS
   wiim/             WiiM HTTP/UPnP client, the two network tasks, album art fetch/decode,
                     and the recently played history
+  roon/             Roon discovery, WebSocket and MOO client, history, browse and playback,
+                    and the small-cover cache
   ui/               the LVGL pages and gesture navigation (UiSettings.cpp: settings,
-                    network and setup screens)
+                    network and setup screens; UiLibrary.cpp: the Library page)
     fonts/            generated fonts for most scripts, plus icon fonts
 scripts/
   make_fonts.py     regenerates the text fonts
@@ -473,9 +501,8 @@ scripts/
 - **Play/pause for Connect sources.** Qobuz Connect reports "none" whether it's playing or
   paused, so the knob guesses from whether the track position is moving. The icon catches up
   about 2 seconds after a pause. Other Connect sources may do the same.
-- **Roon as a source.** Roon's extension API pushes track changes and serves covers at any size,
-  which would fix the art lag above. It needs a C++ client for Roon's discovery and messaging
-  protocols, since Roon only publishes a Node.js one.
+- **More from Roon.** Shuffle and repeat toggles, "Start Radio" from the current track, and
+  browsing albums are all in the browse and transport APIs the knob already uses.
 - **Rare characters.** The CJK font only holds the common sets, so an uncommon character in a
   name shows as a blank. Arabic, Hebrew, Thai and the Indic scripts aren't covered at all, and
   Arabic and Hebrew would also need right-to-left layout.
