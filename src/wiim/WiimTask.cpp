@@ -2,6 +2,7 @@
 #include "AlbumArt.h"
 #include "RecentAlbums.h"
 #include "Config.h"
+#include "roon/Roon.h"
 
 #include <Arduino.h>
 #include <esp_heap_caps.h>
@@ -129,6 +130,16 @@ void refreshMetadata() {
   }
   diag.metaOk++;
   diag.lastMetaOkMs = millis();
+
+  // Roon pushes track changes the moment they happen and serves the cover at screen size, where
+  // the WiiM reports Roon's cover link a poll or two late.
+  roon::Zone zone;
+  if (roon::zoneForWiim(meta.title, zone)) {
+    meta.title = zone.title;
+    meta.artist = zone.artist;
+    meta.album = zone.album;
+    meta.albumArtUrl = zone.imageKey.length() ? roon::imageUrl(zone.imageKey, 360) : String();
+  }
 
   uint32_t now = millis();
   bool newArtUrl = meta.albumArtUrl.startsWith("http") && meta.albumArtUrl != lastAlbumArtUrl &&
@@ -282,11 +293,16 @@ void bgTaskFn(void *) {
   uint32_t followFromVersion = 0;
   bool forcePresets = true;
   bool forceMeta = true;
+  uint32_t roonVersion = 0;
 
   for (;;) {
     uint32_t now = millis();
     if (metaRefreshNow) {
       metaRefreshNow = false;
+      forceMeta = true;
+    }
+    if (roon::version() != roonVersion) {
+      roonVersion = roon::version();
       forceMeta = true;
     }
     if (metaRefreshRequested) {

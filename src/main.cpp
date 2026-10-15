@@ -11,6 +11,7 @@
 #include "input/Knob.h"
 #include "input/Touch.h"
 #include "net/NetConfig.h"
+#include "roon/Roon.h"
 #include "net/SetupPortal.h"
 #include "power/Battery.h"
 #include "power/BatteryCal.h"
@@ -283,6 +284,7 @@ void beginStatusServer() {
     json.remove(json.length() - 1); // reopen the object to append the log
     json += ",\"battery_curve_mv\":" + power::battery::learnedCurveJson();
     json += ",\"battery_cutoff_v\":" + String(power::battery::lowCutoffVolts(), 3);
+    json += ",\"roon\":" + roon::statusJson();
     json += ",\"boot_log\":" + power::bootLogJson() + "}\n";
     statusServer.send(200, "application/json", json);
   });
@@ -480,6 +482,7 @@ void applyPollRates() {
 void onScreenChange(bool on) {
   applyPollRates();
   if (on) wiim::task::requestMetadataRefresh();
+  roon::setActive(on);
 }
 
 void applyPowerSource(bool external) {
@@ -624,6 +627,7 @@ void setup() {
   beginStatusServer();
 
   wiim::task::begin(netConfig.wiimHost);
+  roon::begin();
 
   // A hung loop() would otherwise leave the screen lit until the battery dies; this reboots it
   // (logged as "watchdog" in the boot log). Arduino feeds it once per loop() pass.
