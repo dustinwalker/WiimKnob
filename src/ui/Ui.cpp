@@ -49,7 +49,7 @@ bool skipPending = false; // waiting for the WiiM to report the track a skip ask
 bool skipWasPrevious = false;
 uint32_t skipStartedMs = 0;
 constexpr uint32_t kSkipWaitMaxMs = 6000;
-lv_obj_t *tickerPill = nullptr; // "title · artist" left over the art while the controls are hidden
+lv_obj_t *tickerPill = nullptr; // "title · artist" band over the art while the controls are hidden
 lv_obj_t *tickerLabel = nullptr;
 bool controlsShown = true;
 uint32_t controlsTimeoutMs = 8000;
@@ -589,26 +589,28 @@ void begin(const Callbacks &cbs) {
   }
 
   tickerPill = lv_obj_create(np);
-  lv_obj_set_size(tickerPill, 240, 34);
-  lv_obj_set_style_radius(tickerPill, 17, 0);
+  // Full width with square ends: the round glass crops it, so it reads as part of the bezel.
+  lv_obj_set_size(tickerPill, 360, 44);
+  lv_obj_set_style_radius(tickerPill, 0, 0);
   lv_obj_set_style_bg_color(tickerPill, lv_color_black(), 0);
   lv_obj_set_style_bg_opa(tickerPill, LV_OPA_50, 0);
   lv_obj_set_style_border_width(tickerPill, 0, 0);
-  lv_obj_set_style_pad_hor(tickerPill, 14, 0);
+  lv_obj_set_style_pad_hor(tickerPill, 0, 0);
   lv_obj_set_style_pad_ver(tickerPill, 0, 0);
-  lv_obj_align(tickerPill, LV_ALIGN_CENTER, 0, 128);
+  lv_obj_align(tickerPill, LV_ALIGN_CENTER, 0, 122);
   lv_obj_clear_flag(tickerPill, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_clear_flag(tickerPill, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_flag(tickerPill, LV_OBJ_FLAG_HIDDEN);
 
   tickerLabel = lv_label_create(tickerPill);
-  lv_obj_set_width(tickerLabel, lv_pct(100));
+  lv_obj_set_width(tickerLabel, 236); // the visible chord of the circle at this height, less a margin
   lv_label_set_long_mode(tickerLabel, LV_LABEL_LONG_SCROLL_CIRCULAR);
   lv_obj_set_style_text_align(tickerLabel, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_set_style_text_font(tickerLabel, &lv_font_montserrat_16_latin, 0);
+  lv_obj_set_style_text_font(tickerLabel, &lv_font_montserrat_18_latin, 0);
   lv_obj_set_style_text_color(tickerLabel, lv_color_white(), 0);
   lv_obj_center(tickerLabel);
   lv_label_set_text(tickerLabel, "");
+  lv_obj_move_foreground(progressArc); // the ring stays unbroken over the band
 
   volumeArc = lv_arc_create(ctrl);
   lv_obj_set_size(volumeArc, 356, 356);

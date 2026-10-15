@@ -257,9 +257,9 @@ over-driving the actuator.
 
 The stock LVGL `lv_font_montserrat_16`/`_20` only include ASCII plus the icon symbols — verified
 directly from their compiled-in glyph range tables, not assumed. Any accented character (é, ö,
-ñ, etc., e.g. in a track or artist name) had no glyph to draw at all. `src/ui/fonts/` has two
-regenerated replacements (`lv_font_montserrat_16_latin`/`_20_latin`, used for the title/artist
-labels only) built from the same Montserrat-Medium.ttf + FontAwesome5 symbol set LVGL's own
+ñ, etc., e.g. in a track or artist name) had no glyph to draw at all. `src/ui/fonts/` has three
+regenerated replacements (`lv_font_montserrat_16_latin`/`_18_latin`/`_20_latin`, used for the
+title/artist labels and the ticker only) built from the same Montserrat-Medium.ttf + FontAwesome5 symbol set LVGL's own
 build uses, with the main range extended to cover Latin-1 Supplement and Latin Extended-A
 (`0x20-0x7F,0xA0-0x17F,0x2022`) — enough for French, German, Spanish, Nordic, Polish, Czech,
 and most other Western/Central European text. The exact `lv_font_conv` command is in each

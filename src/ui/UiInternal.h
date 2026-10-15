@@ -10,6 +10,7 @@
 // up; the icon buttons and the volume number stay on the stock fonts.
 LV_FONT_DECLARE(lv_font_montserrat_20_latin);
 LV_FONT_DECLARE(lv_font_montserrat_16_latin);
+LV_FONT_DECLARE(lv_font_montserrat_18_latin);
 
 // State Ui.cpp shares with UiSettings.cpp.
 namespace ui {
