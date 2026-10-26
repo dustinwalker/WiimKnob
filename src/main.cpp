@@ -1,5 +1,7 @@
 #include <Arduino.h>
+#include <ArduinoJson.h>
 #include <ArduinoOTA.h>
+#include <HTTPClient.h>
 #include <WebServer.h>
 #include <WiFi.h>
 #include <esp_task_wdt.h>
@@ -310,7 +312,92 @@ void beginOta() {
 WebServer statusServer(80);
 power::battery::Reading lastBattery;
 
+bool fetchTuneIn(const String &query, JsonDocument &doc) {
+  NetworkClient plain;
+  HTTPClient http;
+  if (!http.begin(plain, "http://opml.radiotime.com/" + query + "&render=json")) return false;
+  http.setTimeout(5000);
+  bool ok = http.GET() == HTTP_CODE_OK && !deserializeJson(doc, http.getString());
+  http.end();
+  return ok;
+}
+
+// UPnP rejects playlist links (error 714), so the WiiM gets the first stream inside one. Only
+// plain-HTTP playlists: an HTTPS one would need a third TLS session.
+String firstStreamIn(const String &url) {
+  String path = url;
+  path.toLowerCase();
+  if (path.indexOf('?') >= 0) path.remove(path.indexOf('?'));
+  if (!url.startsWith("http://") || !(path.endsWith(".pls") || path.endsWith(".m3u"))) return url;
+  NetworkClient plain;
+  HTTPClient http;
+  if (!http.begin(plain, url)) return url;
+  http.setTimeout(5000);
+  String body = http.GET() == HTTP_CODE_OK ? http.getString() : String();
+  http.end();
+  int from = 0;
+  while (from < (int)body.length()) {
+    int end = body.indexOf('\n', from);
+    if (end < 0) end = body.length();
+    String line = body.substring(from, end);
+    line.trim();
+    if (line.startsWith("File")) line.remove(0, line.indexOf('=') + 1);
+    if (line.startsWith("http")) return line;
+    from = end + 1;
+  }
+  return url;
+}
+
+// Spike for the TuneIn page: /tunein?id=s21793 plays that station through UPnP with its name,
+// show and logo as metadata. With no id, reports what the knob currently has.
+void handleTuneIn() {
+  String id = statusServer.arg("id");
+  JsonDocument out;
+  if (id.length()) {
+    JsonDocument tune, describe;
+    if (!fetchTuneIn("Tune.ashx?formats=mp3,aac&id=" + id, tune) ||
+        !fetchTuneIn("Describe.ashx?c=nowplaying&id=" + id, describe)) {
+      statusServer.send(502, "application/json", "{\"error\":\"tunein fetch failed\"}\n");
+      return;
+    }
+    feedLoopWDT();
+    String url = firstStreamIn(tune["body"][0]["url"] | "");
+    String station, show, logo;
+    for (JsonObject row : describe["body"].as<JsonArray>()) {
+      String key = row["key"] | "";
+      if (key == "station") {
+        station = row["text"] | "";
+        logo = row["image"] | "";
+      } else if (key == "show") {
+        show = row["text"] | "";
+      }
+    }
+    if (!url.length()) {
+      statusServer.send(404, "application/json", "{\"error\":\"no stream url\"}\n");
+      return;
+    }
+    wiim::task::requestStream(url, station, show, logo);
+    out["sent"]["url"] = url;
+    out["sent"]["title"] = station;
+    out["sent"]["artist"] = show;
+    out["sent"]["art"] = logo;
+  }
+  wiim::PlayerState state = wiim::task::getPlayerState();
+  wiim::TrackMetadata meta = wiim::task::getMetadata();
+  out["knob"]["mode"] = state.mode;
+  out["knob"]["status"] = state.status;
+  out["knob"]["duration_ms"] = state.durationMs;
+  out["knob"]["title"] = meta.title;
+  out["knob"]["artist"] = meta.artist;
+  out["knob"]["art"] = meta.albumArtUrl;
+  out["knob"]["art_shown"] = wiim::albumart::currentUrl();
+  String body;
+  serializeJson(out, body);
+  statusServer.send(200, "application/json", body + "\n");
+}
+
 void beginStatusServer() {
+  statusServer.on("/tunein", HTTP_GET, handleTuneIn);
   statusServer.on("/status", HTTP_GET, []() {
     wiim::task::Diagnostics d = wiim::task::diagnostics();
     const power::BootInfo &boot = power::lastBoot();
