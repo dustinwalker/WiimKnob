@@ -3,6 +3,7 @@
 
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
+#include <LittleFS.h>
 #include <WiFi.h>
 #include <esp_heap_caps.h>
 #include <freertos/FreeRTOS.h>
@@ -17,6 +18,7 @@ namespace {
 
 constexpr const char *kHost = "http://opml.radiotime.com/";
 constexpr int kMaxDepth = 8;
+constexpr const char *kFavoritesPath = "/tunein_favorites.json";
 
 struct SpiRamAllocator : ArduinoJson::Allocator {
   void *allocate(size_t n) override { return heap_caps_malloc(n, MALLOC_CAP_SPIRAM); }
@@ -124,6 +126,51 @@ void load(int which) {
   versionCounter++;
 }
 
+void saveFavorites() {
+  JsonDocument doc(&spiRam);
+  xSemaphoreTake(mutex, portMAX_DELAY);
+  const ListState &list = lists[(int)List::kFavorites];
+  for (int i = 0; i < list.count; i++) {
+    JsonArray e = doc.add<JsonArray>();
+    e.add(list.rows[i].target);
+    e.add(list.rows[i].title);
+    e.add(list.rows[i].image);
+  }
+  xSemaphoreGive(mutex);
+  File f = LittleFS.open(kFavoritesPath, "w");
+  if (!f) return;
+  serializeJson(doc, f);
+  f.close();
+}
+
+void loadFavorites() {
+  ListState &list = lists[(int)List::kFavorites];
+  list.state = State::kReady;
+  if (!LittleFS.begin(true)) return;
+  File f = LittleFS.open(kFavoritesPath, "r");
+  if (!f) return;
+  JsonDocument doc(&spiRam);
+  DeserializationError err = deserializeJson(doc, f);
+  f.close();
+  if (err) return;
+  for (JsonArrayConst e : doc.as<JsonArrayConst>()) {
+    if (list.count >= kMaxFavorites) break;
+    Row &row = list.rows[list.count++];
+    row.station = true;
+    strlcpy(row.target, e[0] | "", sizeof(row.target));
+    strlcpy(row.title, e[1] | "", sizeof(row.title));
+    strlcpy(row.image, e[2] | "", sizeof(row.image));
+  }
+}
+
+int findFavorite(const char *guideId) {
+  const ListState &list = lists[(int)List::kFavorites];
+  for (int i = 0; i < list.count; i++) {
+    if (strcmp(list.rows[i].target, guideId) == 0) return i;
+  }
+  return -1;
+}
+
 void play(const Row &row) {
   static JsonDocument filter;
   if (filter.isNull()) filter["body"][0]["url"] = true;
@@ -145,6 +192,7 @@ void taskFn(void *) {
     Command cmd;
     if (xQueueReceive(commands, &cmd, portMAX_DELAY) != pdTRUE) continue;
     ListState &list = lists[cmd.list];
+    if (cmd.list == (int)List::kFavorites && cmd.kind != Command::kOpen) continue; // nothing to fetch
     switch (cmd.kind) {
     case Command::kLoad:
       if (list.state == State::kIdle || list.state == State::kFailed) load(cmd.list);
@@ -187,12 +235,13 @@ void begin() {
   mutex = xSemaphoreCreateMutex();
   commands = xQueueCreate(8, sizeof(Command));
   scratch = (Row *)heap_caps_calloc(kMaxRows, sizeof(Row), MALLOC_CAP_SPIRAM);
-  const char *roots[kListCount][2] = {{"Browse.ashx?c=local", "Local"}, {"Browse.ashx", "Browse"}};
+  const char *roots[kListCount][2] = {{"", "Favorites"}, {"Browse.ashx?c=local", "Local"}, {"Browse.ashx", "Browse"}};
   for (int i = 0; i < kListCount; i++) {
     lists[i].rows = (Row *)heap_caps_calloc(kMaxRows, sizeof(Row), MALLOC_CAP_SPIRAM);
     strlcpy(lists[i].levels[0].query, roots[i][0], sizeof(Level::query));
     strlcpy(lists[i].levels[0].title, roots[i][1], sizeof(Level::title));
   }
+  loadFavorites();
   // PSRAM stack: safe only because this task never writes flash (no NVS, no LittleFS)
   xTaskCreatePinnedToCoreWithCaps(taskFn, "tunein", 8192, nullptr, 1, nullptr, 0, MALLOC_CAP_SPIRAM);
 }
@@ -226,6 +275,40 @@ String parentTitle(List which) {
 }
 
 uint32_t version() { return versionCounter; }
+
+int toggleFavorite(List which, int index) {
+  if (!mutex) return -1;
+  xSemaphoreTake(mutex, portMAX_DELAY);
+  const ListState &from = lists[(int)which];
+  ListState &favs = lists[(int)List::kFavorites];
+  int result = -1;
+  if (index >= 0 && index < from.count && from.rows[index].station) {
+    Row row = from.rows[index];
+    int at = findFavorite(row.target);
+    if (at >= 0) {
+      memmove(&favs.rows[at], &favs.rows[at + 1], (favs.count - at - 1) * sizeof(Row));
+      favs.count--;
+      result = 0;
+    } else if (favs.count < kMaxFavorites) {
+      row.subtitle[0] = 0; // Local's subtext is the show on air when starred, stale by tomorrow
+      favs.rows[favs.count++] = row;
+      result = 1;
+    }
+  }
+  xSemaphoreGive(mutex);
+  if (result < 0) return result;
+  versionCounter++;
+  saveFavorites();
+  return result;
+}
+
+bool isFavorite(const char *guideId) {
+  if (!mutex || !guideId[0]) return false;
+  xSemaphoreTake(mutex, portMAX_DELAY);
+  bool found = findFavorite(guideId) >= 0;
+  xSemaphoreGive(mutex);
+  return found;
+}
 
 String firstStreamIn(const String &url) {
   String path = url;

@@ -15,12 +15,14 @@ struct Row {
   bool station;
 };
 
-enum class List { kLocal, kBrowse };
-constexpr int kListCount = 2;
+enum class List { kFavorites, kLocal, kBrowse };
+constexpr int kListCount = 3;
 constexpr int kMaxRows = 100;
+constexpr int kMaxFavorites = 30;
 
 enum class State { kIdle, kLoading, kReady, kFailed };
 
+// Loads favorites from flash, so call it from a task with an internal-RAM stack.
 void begin();
 
 // Non-blocking; open() drills into a link or plays a station.
@@ -34,6 +36,11 @@ State state(List which);
 String parentTitle(List which);
 // Bumped whenever a list's rows or state change.
 uint32_t version();
+
+// Stars or unstars a station row and saves the favorites to flash. Returns 1 when added, 0
+// when removed, -1 for a link row or a full list. Writes flash: never call it from the TuneIn task.
+int toggleFavorite(List which, int index);
+bool isFavorite(const char *guideId);
 
 // UPnP rejects playlist links (error 714); HTTPS ones are left alone to spare a TLS session.
 String firstStreamIn(const String &url);
