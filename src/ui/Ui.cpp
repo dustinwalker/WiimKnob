@@ -23,7 +23,7 @@ constexpr uint32_t kButtonColor = 0x2a2a2a;
 constexpr uint32_t kBadgeColor = 0x333333;
 constexpr uint32_t kBatteryGreen = 0x639922;
 
-bool pageEnabled[kScreenCount] = {true, false, true, true, true, true};
+bool pageEnabled[kScreenCount] = {true, false, false, true, true, true, true};
 lv_obj_t *pageDots[kScreenCount][kScreenCount] = {};
 
 // Now playing: full-screen art. A tap, a knob turn or waking the screen brings the controls up
@@ -948,6 +948,12 @@ void setRoonModes(bool show, bool shuffle, int repeat) {
   lv_obj_set_style_text_color(repeatButton, lv_color_hex(repeat ? 0xffffff : 0x5a5a5a), 0);
   if (repeat == 2) lv_obj_clear_flag(repeatOneMark, LV_OBJ_FLAG_HIDDEN);
   else lv_obj_add_flag(repeatOneMark, LV_OBJ_FLAG_HIDDEN);
+}
+
+void setTuneInEnabled(bool enabled) {
+  if (pageEnabled[kTuneIn] == enabled) return;
+  pageEnabled[kTuneIn] = enabled;
+  layoutPageDots();
 }
 
 void setRecentEnabled(bool enabled) {

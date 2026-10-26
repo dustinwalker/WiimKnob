@@ -6,7 +6,7 @@
 // steps through a fixed list of values; defaults come from Config.h.
 namespace settings {
 
-enum Item { kBrightness, kControlsTimeout, kScreenTimeout, kSleepTimeout, kRecentPage, kBatteryCal, kRoonZone, kCount };
+enum Item { kBrightness, kControlsTimeout, kScreenTimeout, kSleepTimeout, kRecentPage, kTuneInPage, kBatteryCal, kRoonZone, kCount };
 
 void begin();
 

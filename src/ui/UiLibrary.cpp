@@ -6,22 +6,49 @@ using namespace detail;
 
 namespace {
 
-constexpr int kTabs = 4;
+constexpr int kMaxTabs = 4;
 constexpr int kMaxRows = 100;
 constexpr int kThumbSize = 48;
-// Indexed like roon::List; kTabOrder is how they sit on screen.
-const char *const kTabNames[kTabs] = {"History", "Playlists", "Radio", "Up next"};
-const char *const kEmptyText[kTabs] = {"Tracks you play from Roon will show up here",
-                                       "No playlists in Roon yet", "No stations in My Live Radio",
-                                       "Nothing queued in Roon"};
-const int kTabOrder[kTabs] = {0, 3, 1, 2};
 
-lv_obj_t *tabLabels[kTabs];
-lv_obj_t *lists[kTabs];
-lv_obj_t *thumbs[kTabs][kMaxRows];
-int rowCounts[kTabs];
-lv_obj_t *emptyLabel;
-int currentTab = 0;
+// A page of tabs over scrolling rows: Library (Roon) and TuneIn.
+struct ListPage {
+  int screen;
+  int tabCount;
+  const char *const *tabNames; // indexed by tab
+  const int *tabOrder;         // how the tabs sit on screen
+  void (*onItem)(int tab, int index);
+  void (*onTab)(int tab);
+  lv_obj_t *tabLabels[kMaxTabs];
+  lv_obj_t *lists[kMaxTabs];
+  lv_obj_t *thumbs[kMaxTabs][kMaxRows];
+  int rowCounts[kMaxTabs];
+  char emptyText[kMaxTabs][64];
+  lv_obj_t *emptyLabel;
+  int currentTab;
+};
+
+const char *const kLibraryTabs[] = {"History", "Playlists", "Radio", "Up next"};
+const char *const kLibraryEmpty[] = {"Tracks you play from Roon will show up here", "No playlists in Roon yet",
+                                     "No stations in My Live Radio", "Nothing queued in Roon"};
+const int kLibraryOrder[] = {0, 3, 1, 2};
+const char *const kTuneInTabs[] = {"Local", "Browse"};
+const int kTuneInOrder[] = {0, 1};
+
+void libraryItem(int tab, int index) {
+  if (callbacks.onLibraryItem) callbacks.onLibraryItem(tab, index);
+}
+void libraryTab(int tab) {
+  if (callbacks.onLibraryTab) callbacks.onLibraryTab(tab);
+}
+void tuneInItem(int tab, int index) {
+  if (callbacks.onTuneInItem) callbacks.onTuneInItem(tab, index);
+}
+void tuneInTab(int tab) {
+  if (callbacks.onTuneInTab) callbacks.onTuneInTab(tab);
+}
+
+ListPage library = {kLibrary, 4, kLibraryTabs, kLibraryOrder, libraryItem, libraryTab};
+ListPage tuneIn = {kTuneIn, 2, kTuneInTabs, kTuneInOrder, tuneInItem, tuneInTab};
 
 // LVGL still sends CLICKED at the end of a page swipe that started on a row.
 bool wasSwipe() {
@@ -29,29 +56,34 @@ bool wasSwipe() {
   return indev && lv_indev_get_gesture_dir(indev) != LV_DIR_NONE;
 }
 
-void showTab(int tab) {
-  currentTab = tab;
-  for (int i = 0; i < kTabs; i++) {
-    lv_obj_set_style_text_color(tabLabels[i], lv_color_hex(i == tab ? 0xffffff : 0x707070), 0);
-    if (i == tab) lv_obj_clear_flag(lists[i], LV_OBJ_FLAG_HIDDEN);
-    else lv_obj_add_flag(lists[i], LV_OBJ_FLAG_HIDDEN);
+void showTab(ListPage &page, int tab) {
+  page.currentTab = tab;
+  for (int i = 0; i < page.tabCount; i++) {
+    lv_obj_set_style_text_color(page.tabLabels[i], lv_color_hex(i == tab ? 0xffffff : 0x707070), 0);
+    if (i == tab) lv_obj_clear_flag(page.lists[i], LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_add_flag(page.lists[i], LV_OBJ_FLAG_HIDDEN);
   }
-  lv_label_set_text(emptyLabel, kEmptyText[tab]);
-  if (rowCounts[tab]) lv_obj_add_flag(emptyLabel, LV_OBJ_FLAG_HIDDEN);
-  else lv_obj_clear_flag(emptyLabel, LV_OBJ_FLAG_HIDDEN);
+  lv_label_set_text(page.emptyLabel, page.emptyText[tab]);
+  if (page.rowCounts[tab]) lv_obj_add_flag(page.emptyLabel, LV_OBJ_FLAG_HIDDEN);
+  else lv_obj_clear_flag(page.emptyLabel, LV_OBJ_FLAG_HIDDEN);
 }
+
+// Tab and row events carry page * 100000 + tab * 1000 + index.
+ListPage &pageFor(int packed) { return packed / 100000 == kTuneIn ? tuneIn : library; }
 
 void onTabClicked(lv_event_t *e) {
   if (wasSwipe()) return;
-  int tab = (int)(intptr_t)lv_event_get_user_data(e);
-  showTab(tab);
-  if (callbacks.onLibraryTab) callbacks.onLibraryTab(tab);
+  int packed = (int)(intptr_t)lv_event_get_user_data(e);
+  ListPage &page = pageFor(packed);
+  int tab = packed % 100000 / 1000;
+  showTab(page, tab);
+  page.onTab(tab);
 }
 
 void onRowClicked(lv_event_t *e) {
   if (wasSwipe()) return;
   int packed = (int)(intptr_t)lv_event_get_user_data(e);
-  if (callbacks.onLibraryItem) callbacks.onLibraryItem(packed / 1000, packed % 1000);
+  pageFor(packed).onItem(packed % 100000 / 1000, packed % 1000);
 }
 
 lv_obj_t *makeLabel(lv_obj_t *row, const char *text, uint32_t color, lv_align_t align, int y) {
@@ -65,10 +97,8 @@ lv_obj_t *makeLabel(lv_obj_t *row, const char *text, uint32_t color, lv_align_t 
   return label;
 }
 
-} // namespace
-
-void detail::buildLibraryScreen() {
-  lv_obj_t *scr = screens[kLibrary];
+void buildPage(ListPage &page) {
+  lv_obj_t *scr = screens[page.screen];
 
   lv_obj_t *tabRow = lv_obj_create(scr);
   lv_obj_set_size(tabRow, 250, 28);
@@ -81,18 +111,18 @@ void detail::buildLibraryScreen() {
   lv_obj_set_flex_align(tabRow, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_clear_flag(tabRow, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_flag(tabRow, LV_OBJ_FLAG_GESTURE_BUBBLE);
-  for (int slot = 0; slot < kTabs; slot++) {
-    int i = kTabOrder[slot];
+  for (int slot = 0; slot < page.tabCount; slot++) {
+    int i = page.tabOrder[slot];
     lv_obj_t *tab = lv_label_create(tabRow);
     lv_obj_set_style_text_font(tab, &lv_font_montserrat_14, 0);
-    lv_label_set_text(tab, kTabNames[i]);
+    lv_label_set_text(tab, page.tabNames[i]);
     lv_obj_add_flag(tab, LV_OBJ_FLAG_GESTURE_BUBBLE);
     lv_obj_add_flag(tab, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_ext_click_area(tab, 12);
-    lv_obj_add_event_cb(tab, onTabClicked, LV_EVENT_CLICKED, (void *)(intptr_t)i);
-    tabLabels[i] = tab;
+    lv_obj_add_event_cb(tab, onTabClicked, LV_EVENT_CLICKED, (void *)(intptr_t)(page.screen * 100000 + i * 1000));
+    page.tabLabels[i] = tab;
   }
-  for (int i = 0; i < kTabs; i++) {
+  for (int i = 0; i < page.tabCount; i++) {
     lv_obj_t *list = lv_obj_create(scr);
     lv_obj_set_size(list, 276, 228);
     lv_obj_align(list, LV_ALIGN_TOP_MID, 0, 76);
@@ -106,25 +136,25 @@ void detail::buildLibraryScreen() {
     lv_obj_set_scroll_dir(list, LV_DIR_VER);
     lv_obj_set_scrollbar_mode(list, LV_SCROLLBAR_MODE_OFF);
     lv_obj_add_flag(list, LV_OBJ_FLAG_GESTURE_BUBBLE);
-    lists[i] = list;
+    page.lists[i] = list;
   }
 
-  emptyLabel = lv_label_create(scr);
-  lv_obj_set_width(emptyLabel, 220);
-  lv_label_set_long_mode(emptyLabel, LV_LABEL_LONG_WRAP);
-  lv_obj_set_style_text_align(emptyLabel, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_set_style_text_font(emptyLabel, &lv_font_montserrat_16_latin, 0);
-  lv_obj_set_style_text_color(emptyLabel, lv_color_hex(0xa0a0a0), 0);
-  lv_obj_center(emptyLabel);
+  page.emptyLabel = lv_label_create(scr);
+  lv_obj_set_width(page.emptyLabel, 220);
+  lv_label_set_long_mode(page.emptyLabel, LV_LABEL_LONG_WRAP);
+  lv_obj_set_style_text_align(page.emptyLabel, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_text_font(page.emptyLabel, &lv_font_montserrat_16_latin, 0);
+  lv_obj_set_style_text_color(page.emptyLabel, lv_color_hex(0xa0a0a0), 0);
+  lv_obj_center(page.emptyLabel);
 
-  makePageDots(scr, kLibrary);
-  showTab(0);
+  makePageDots(scr, page.screen);
+  showTab(page, 0);
 }
 
-void setLibraryRows(int tab, const LibraryRow *rows, int count) {
-  if (tab < 0 || tab >= kTabs) return;
+void setRows(ListPage &page, int tab, const LibraryRow *rows, int count) {
+  if (tab < 0 || tab >= page.tabCount) return;
   count = LV_MIN(count, kMaxRows);
-  lv_obj_t *list = lists[tab];
+  lv_obj_t *list = page.lists[tab];
   lv_coord_t scrollY = lv_obj_get_scroll_y(list);
   lv_obj_clean(list);
   for (int i = 0; i < count; i++) {
@@ -137,7 +167,8 @@ void setLibraryRows(int tab, const LibraryRow *rows, int count) {
     lv_obj_set_style_bg_color(row, lv_color_hex(0x3a3a3a), LV_STATE_PRESSED);
     lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(row, LV_OBJ_FLAG_GESTURE_BUBBLE);
-    lv_obj_add_event_cb(row, onRowClicked, LV_EVENT_CLICKED, (void *)(intptr_t)(tab * 1000 + i));
+    lv_obj_add_event_cb(row, onRowClicked, LV_EVENT_CLICKED,
+                        (void *)(intptr_t)(page.screen * 100000 + tab * 1000 + i));
 
     lv_obj_t *img = lv_img_create(row);
     lv_obj_set_size(img, kThumbSize, kThumbSize);
@@ -146,19 +177,43 @@ void setLibraryRows(int tab, const LibraryRow *rows, int count) {
     lv_obj_set_style_bg_opa(img, LV_OPA_COVER, 0);
     lv_obj_clear_flag(img, LV_OBJ_FLAG_CLICKABLE);
     if (rows[i].thumb) lv_img_set_src(img, rows[i].thumb);
-    thumbs[tab][i] = img;
+    page.thumbs[tab][i] = img;
 
     makeLabel(row, rows[i].title, 0xffffff, LV_ALIGN_TOP_LEFT, 2);
     makeLabel(row, rows[i].subtitle, 0x9a9a9a, LV_ALIGN_BOTTOM_LEFT, -2);
   }
-  rowCounts[tab] = count;
+  page.rowCounts[tab] = count;
   lv_obj_scroll_to_y(list, scrollY, LV_ANIM_OFF);
-  if (tab == currentTab) showTab(tab);
+  if (tab == page.currentTab) showTab(page, tab);
 }
 
-void setLibraryThumb(int tab, int index, const lv_img_dsc_t *thumb) {
-  if (tab < 0 || tab >= kTabs || index < 0 || index >= rowCounts[tab] || !thumb) return;
-  lv_img_set_src(thumbs[tab][index], thumb);
+void setThumb(ListPage &page, int tab, int index, const lv_img_dsc_t *thumb) {
+  if (tab < 0 || tab >= page.tabCount || index < 0 || index >= page.rowCounts[tab] || !thumb) return;
+  lv_img_set_src(page.thumbs[tab][index], thumb);
+}
+
+} // namespace
+
+void detail::buildLibraryScreen() {
+  for (int i = 0; i < library.tabCount; i++) strlcpy(library.emptyText[i], kLibraryEmpty[i], sizeof(library.emptyText[i]));
+  buildPage(library);
+  buildPage(tuneIn);
+}
+
+void setLibraryRows(int tab, const LibraryRow *rows, int count) { setRows(library, tab, rows, count); }
+void setLibraryThumb(int tab, int index, const lv_img_dsc_t *thumb) { setThumb(library, tab, index, thumb); }
+
+void setTuneInRows(int tab, const LibraryRow *rows, int count) { setRows(tuneIn, tab, rows, count); }
+void setTuneInThumb(int tab, int index, const lv_img_dsc_t *thumb) { setThumb(tuneIn, tab, index, thumb); }
+
+void setTuneInEmptyText(int tab, const char *text) {
+  if (tab < 0 || tab >= tuneIn.tabCount || strcmp(tuneIn.emptyText[tab], text) == 0) return;
+  strlcpy(tuneIn.emptyText[tab], text, sizeof(tuneIn.emptyText[tab]));
+  if (tab == tuneIn.currentTab) showTab(tuneIn, tab);
+}
+
+void scrollTuneInToTop(int tab) {
+  if (tab >= 0 && tab < tuneIn.tabCount) lv_obj_scroll_to_y(tuneIn.lists[tab], 0, LV_ANIM_OFF);
 }
 
 } // namespace ui

@@ -21,6 +21,7 @@
 #include "power/BatteryCal.h"
 #include "power/Power.h"
 #include "settings/Settings.h"
+#include "tunein/TuneIn.h"
 #include "ui/Ui.h"
 #include "wiim/AlbumArt.h"
 #include "wiim/WiimTask.h"
@@ -112,6 +113,32 @@ void onLibraryItem(int tab, int index) {
   ui::setTrack(row.title, track ? row.subtitle : "");
   ui::setArtPending(true);
 }
+tunein::Row *tuneInRows[tunein::kListCount] = {};
+int tuneInCounts[tunein::kListCount] = {};
+int tuneInOffset[tunein::kListCount] = {}; // 1 while a back row sits above the rows
+
+void onTuneInItem(int tab, int index) {
+  if (tab < 0 || tab >= tunein::kListCount) return;
+  haptics::buzz();
+  if (index < tuneInOffset[tab]) {
+    tunein::requestBack((tunein::List)tab);
+    return;
+  }
+  index -= tuneInOffset[tab];
+  if (index < 0 || index >= tuneInCounts[tab]) return;
+  tunein::requestOpen((tunein::List)tab, index);
+  const tunein::Row &row = tuneInRows[tab][index];
+  if (!row.station) return;
+  ui::showNowPlaying();
+  pendingPlay.active = true;
+  pendingPlay.fromTitle = wiim::task::getMetadata().title;
+  pendingPlay.startedMs = millis();
+  ui::hideControlsNow();
+  ui::setTrack(row.title, row.subtitle);
+  ui::setArtPending(true);
+}
+void onTuneInTab(int tab) { tunein::requestLoad((tunein::List)tab); }
+
 void onShuffle() {
   roon::requestToggleShuffle();
   haptics::buzz();
@@ -150,6 +177,9 @@ void applySetting(settings::Item item) {
   case settings::kBatteryCal:
     power::batcal::setEnabled(v);
     power::setStayAwake(v);
+    break;
+  case settings::kTuneInPage:
+    ui::setTuneInEnabled(v);
     break;
   case settings::kRecentPage:
     ui::setRecentEnabled(v);
@@ -323,32 +353,6 @@ bool fetchTuneIn(const String &query, JsonDocument &doc) {
   return ok;
 }
 
-// UPnP rejects playlist links (error 714), so the WiiM gets the first stream inside one. Only
-// plain-HTTP playlists: an HTTPS one would need a third TLS session.
-String firstStreamIn(const String &url) {
-  String path = url;
-  path.toLowerCase();
-  if (path.indexOf('?') >= 0) path.remove(path.indexOf('?'));
-  if (!url.startsWith("http://") || !(path.endsWith(".pls") || path.endsWith(".m3u"))) return url;
-  NetworkClient plain;
-  HTTPClient http;
-  if (!http.begin(plain, url)) return url;
-  http.setTimeout(5000);
-  String body = http.GET() == HTTP_CODE_OK ? http.getString() : String();
-  http.end();
-  int from = 0;
-  while (from < (int)body.length()) {
-    int end = body.indexOf('\n', from);
-    if (end < 0) end = body.length();
-    String line = body.substring(from, end);
-    line.trim();
-    if (line.startsWith("File")) line.remove(0, line.indexOf('=') + 1);
-    if (line.startsWith("http")) return line;
-    from = end + 1;
-  }
-  return url;
-}
-
 // Spike for the TuneIn page: /tunein?id=s21793 plays that station through UPnP with its name,
 // show and logo as metadata. With no id, reports what the knob currently has.
 void handleTuneIn() {
@@ -362,7 +366,7 @@ void handleTuneIn() {
       return;
     }
     feedLoopWDT();
-    String url = firstStreamIn(tune["body"][0]["url"] | "");
+    String url = tunein::firstStreamIn(tune["body"][0]["url"] | "");
     String station, show, logo;
     for (JsonObject row : describe["body"].as<JsonArray>()) {
       String key = row["key"] | "";
@@ -644,6 +648,64 @@ void syncLibrary() {
   }
 }
 
+void syncTuneIn() {
+  static bool hasThumb[tunein::kListCount][tunein::kMaxRows] = {};
+  static uint32_t seenVersion = UINT32_MAX, seenThumbs = 0;
+  static String seenParent[tunein::kListCount];
+  if (!settings::value(settings::kTuneInPage)) return;
+  if (!tuneInRows[0]) {
+    for (tunein::Row *&r : tuneInRows) r = (tunein::Row *)heap_caps_calloc(tunein::kMaxRows, sizeof(tunein::Row), MALLOC_CAP_SPIRAM);
+  }
+  static uint32_t lastLoadMs = 0;
+  if (WiFi.status() == WL_CONNECTED && (!lastLoadMs || millis() - lastLoadMs > 30000)) {
+    lastLoadMs = millis();
+    for (int tab = 0; tab < tunein::kListCount; tab++) tunein::requestLoad((tunein::List)tab); // no-op once loaded
+  }
+  if (tunein::version() != seenVersion) {
+    seenVersion = tunein::version();
+    static ui::LibraryRow out[tunein::kMaxRows + 1];
+    for (int tab = 0; tab < tunein::kListCount; tab++) {
+      tunein::List list = (tunein::List)tab;
+      tunein::State state = tunein::state(list);
+      if (state == tunein::State::kLoading) {
+        ui::setTuneInRows(tab, out, 0);
+        ui::setTuneInEmptyText(tab, "Loading...");
+        continue;
+      }
+      ui::setTuneInEmptyText(tab, state == tunein::State::kFailed ? "Couldn't reach TuneIn" : "Nothing here");
+      int n = tunein::copyList(list, tuneInRows[tab], tunein::kMaxRows);
+      tuneInCounts[tab] = n;
+      String parent = tunein::parentTitle(list);
+      String back = String(LV_SYMBOL_LEFT "  ") + parent;
+      tuneInOffset[tab] = parent.length() ? 1 : 0;
+      if (tuneInOffset[tab]) out[0] = {back.c_str(), "", nullptr};
+      for (int i = 0; i < n; i++) {
+        const tunein::Row &row = tuneInRows[tab][i];
+        const lv_img_dsc_t *thumb = roon::thumbs::get(row.image);
+        hasThumb[tab][i] = thumb != nullptr;
+        out[tuneInOffset[tab] + i] = {row.title, row.station ? row.subtitle : LV_SYMBOL_RIGHT, thumb};
+      }
+      ui::setTuneInRows(tab, out, tuneInOffset[tab] + n);
+      if (parent != seenParent[tab]) {
+        seenParent[tab] = parent;
+        ui::scrollTuneInToTop(tab);
+      }
+    }
+  }
+  if (roon::thumbs::version() != seenThumbs) {
+    seenThumbs = roon::thumbs::version();
+    for (int tab = 0; tab < tunein::kListCount; tab++) {
+      for (int i = 0; i < tuneInCounts[tab]; i++) {
+        if (hasThumb[tab][i] || !tuneInRows[tab][i].image[0]) continue;
+        const lv_img_dsc_t *thumb = roon::thumbs::get(tuneInRows[tab][i].image);
+        if (!thumb) continue;
+        hasThumb[tab][i] = true;
+        ui::setTuneInThumb(tab, tuneInOffset[tab] + i, thumb);
+      }
+    }
+  }
+}
+
 void serviceKnob() {
   int delta = input::knob::consumeDelta();
   if (delta == 0) {
@@ -776,7 +838,7 @@ void setup() {
   display::begin();
 
   ui::Callbacks callbacks = {onPrev, onNext, onPlayPause, onPreset, onRecent, onSettingTapped, onWifiSetup,
-                                onLibraryItem, onLibraryTab, onShuffle, onRepeat};
+                                onLibraryItem, onLibraryTab, onTuneInItem, onTuneInTab, onShuffle, onRepeat};
   ui::begin(callbacks);
 
   settings::begin();
@@ -844,6 +906,7 @@ void setup() {
   roon::begin(netConfig.wiimName.length() ? netConfig.wiimName : netConfig.wiimHost);
   applySetting(settings::kRoonZone);
   roon::thumbs::begin();
+  tunein::begin();
 
   // A hung loop() would otherwise leave the screen lit until the battery dies; this reboots it
   // (logged as "watchdog" in the boot log). Arduino feeds it once per loop() pass.
@@ -877,6 +940,7 @@ void loop() {
   syncPresets();
   syncRecent();
   if (screenOn) syncLibrary();
+  if (screenOn) syncTuneIn();
   serviceBattery();
   power::service();
   settings::service();

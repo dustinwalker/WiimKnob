@@ -33,6 +33,7 @@ const Spec kSpecs[kCount] = {
     {"screen", "Screen off", OPTS(kScreenOpts), SCREEN_TIMEOUT_S},
     {"sleep", "Sleep", OPTS(kSleepOpts), DEEP_SLEEP_TIMEOUT_MIN},
     {"recent", "Recently played", OPTS(kOnOffOpts), 0}, // off: Roon and Connect sources leave nothing to save
+    {"tunein", "TuneIn", OPTS(kOnOffOpts), 0},
     {"batcal", "Calibrate battery", OPTS(kOnOffOpts), 0},
     {"roonzone", "Roon zone", OPTS(kNoOpts), 0}, // the choice lives with the Roon module, keyed by output
 };
@@ -77,6 +78,7 @@ void format(Item item, char *buf, size_t len) {
     snprintf(buf, len, "%d min", v);
     break;
   case kRecentPage:
+  case kTuneInPage:
   case kBatteryCal:
     snprintf(buf, len, "%s", v ? "On" : "Off");
     break;

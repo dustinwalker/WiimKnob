@@ -14,6 +14,8 @@ struct Callbacks {
   void (*onWifiSetup)(); // held, not tapped: it restarts the knob into setup mode
   void (*onLibraryItem)(int tab, int index);
   void (*onLibraryTab)(int tab);
+  void (*onTuneInItem)(int tab, int index);
+  void (*onTuneInTab)(int tab);
   void (*onShuffle)();
   void (*onRepeat)();
 };
@@ -23,6 +25,9 @@ constexpr int kLibraryHistory = 0;
 constexpr int kLibraryPlaylists = 1;
 constexpr int kLibraryRadio = 2;
 constexpr int kLibraryQueue = 3;
+
+constexpr int kTuneInLocal = 0;
+constexpr int kTuneInBrowse = 1;
 
 struct LibraryRow {
   const char *title;
@@ -94,6 +99,13 @@ void setLibraryEnabled(bool enabled);
 void setLibraryRows(int tab, const LibraryRow *rows, int count); // text is copied
 void setLibraryThumb(int tab, int index, const lv_img_dsc_t *thumb);
 void showNowPlaying();
+
+// TuneIn page: same rows as Library. The empty text doubles as the loading and error message.
+void setTuneInEnabled(bool enabled);
+void setTuneInRows(int tab, const LibraryRow *rows, int count); // text is copied
+void setTuneInThumb(int tab, int index, const lv_img_dsc_t *thumb);
+void setTuneInEmptyText(int tab, const char *text);
+void scrollTuneInToTop(int tab); // after drilling in or out
 
 // Shuffle and repeat beside the battery icon, shown while Roon is the source. repeat: 0 off, 1 all, 2 one.
 void setRoonModes(bool show, bool shuffle, int repeat);
