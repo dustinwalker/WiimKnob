@@ -354,10 +354,32 @@ bool fetchTuneIn(const String &query, JsonDocument &doc) {
 }
 
 // Spike for the TuneIn page: /tunein?id=s21793 plays that station through UPnP with its name,
-// show and logo as metadata. With no id, reports what the knob currently has.
+// show and logo as metadata. /tunein?list=local|browse (&open=N, &back=1) drives the TuneIn
+// client without the screen. With neither, reports what the knob currently has.
 void handleTuneIn() {
   String id = statusServer.arg("id");
   JsonDocument out;
+  String listArg = statusServer.arg("list");
+  if (listArg.length()) {
+    tunein::List list = listArg == "browse" ? tunein::List::kBrowse : tunein::List::kLocal;
+    if (statusServer.hasArg("open")) tunein::requestOpen(list, statusServer.arg("open").toInt());
+    else if (statusServer.hasArg("back")) tunein::requestBack(list);
+    else tunein::requestLoad(list);
+    static tunein::Row *rows = (tunein::Row *)heap_caps_calloc(tunein::kMaxRows, sizeof(tunein::Row), MALLOC_CAP_SPIRAM);
+    int n = tunein::copyList(list, rows, tunein::kMaxRows);
+    const char *states[] = {"idle", "loading", "ready", "failed"};
+    out["state"] = states[(int)tunein::state(list)];
+    out["parent"] = tunein::parentTitle(list);
+    out["count"] = n;
+    for (int i = 0; i < n && i < 12; i++) {
+      JsonObject row = out["rows"].add<JsonObject>();
+      row["title"] = rows[i].title;
+      row["subtitle"] = rows[i].subtitle;
+      row["station"] = rows[i].station;
+      row["target"] = rows[i].target;
+      row["thumb"] = roon::thumbs::get(rows[i].image) != nullptr;
+    }
+  }
   if (id.length()) {
     JsonDocument tune, describe;
     if (!fetchTuneIn("Tune.ashx?formats=mp3,aac&id=" + id, tune) ||
