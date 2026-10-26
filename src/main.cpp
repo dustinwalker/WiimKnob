@@ -360,15 +360,18 @@ bool fetchTuneIn(const String &query, JsonDocument &doc) {
 }
 
 // Spike for the TuneIn page: /tunein?id=s21793 plays that station through UPnP with its name,
-// show and logo as metadata. /tunein?list=local|browse (&open=N, &back=1) drives the TuneIn
-// client without the screen. With neither, reports what the knob currently has.
+// show and logo as metadata. /tunein?list=favorites|local|browse (&open=N, &back=1, &star=N)
+// drives the TuneIn client without the screen. With neither, reports what the knob currently has.
 void handleTuneIn() {
   String id = statusServer.arg("id");
   JsonDocument out;
   String listArg = statusServer.arg("list");
   if (listArg.length()) {
-    tunein::List list = listArg == "browse" ? tunein::List::kBrowse : tunein::List::kLocal;
-    if (statusServer.hasArg("open")) tunein::requestOpen(list, statusServer.arg("open").toInt());
+    tunein::List list = listArg == "browse"      ? tunein::List::kBrowse
+                        : listArg == "favorites" ? tunein::List::kFavorites
+                                                 : tunein::List::kLocal;
+    if (statusServer.hasArg("star")) out["starred"] = tunein::toggleFavorite(list, statusServer.arg("star").toInt());
+    else if (statusServer.hasArg("open")) tunein::requestOpen(list, statusServer.arg("open").toInt());
     else if (statusServer.hasArg("back")) tunein::requestBack(list);
     else tunein::requestLoad(list);
     static tunein::Row *rows = (tunein::Row *)heap_caps_calloc(tunein::kMaxRows, sizeof(tunein::Row), MALLOC_CAP_SPIRAM);
@@ -383,6 +386,7 @@ void handleTuneIn() {
       row["subtitle"] = rows[i].subtitle;
       row["station"] = rows[i].station;
       row["target"] = rows[i].target;
+      row["favorite"] = tunein::isFavorite(rows[i].target);
       row["thumb"] = roon::thumbs::get(rows[i].image) != nullptr;
     }
   }
