@@ -16,7 +16,7 @@ namespace task {
 
 namespace {
 
-enum class Cmd { kNext, kPrevious, kTogglePause, kPlayPreset, kPlayRecent };
+enum class Cmd { kNext, kPrevious, kTogglePause, kPlayPreset, kPlayRecent, kPlayStream };
 
 struct Request {
   Cmd cmd;
@@ -61,6 +61,11 @@ uint32_t recentVersionCounter = 0;
 
 bool volumeDirty = false;
 int pendingVolume = -1;
+
+struct Stream {
+  String url, title, artist, artUrl;
+};
+Stream pendingStream; // under stateMutex; kPlayStream reads it, since Request has to stay POD
 
 // Set by the command task after something that likely changed the track (preset, replay,
 // next/prev), so the background task re-reads metadata right away instead of on its timer.
@@ -231,6 +236,14 @@ void runCommand(const Request &req) {
     ok = recent::replay(cmdClient, req.arg);
     Serial.printf("[cmd] replay slot %d %s in %lums\n", req.arg, ok ? "sent" : "FAILED", millis() - started);
     break;
+  case Cmd::kPlayStream: {
+    xSemaphoreTake(stateMutex, portMAX_DELAY);
+    Stream stream = pendingStream;
+    xSemaphoreGive(stateMutex);
+    ok = cmdClient.playStream(stream.url, stream.title, stream.artist, stream.artUrl);
+    Serial.printf("[cmd] stream %s in %lums\n", ok ? "sent" : "FAILED", millis() - started);
+    break;
+  }
   }
   if (!ok) {
     Serial.printf("[cmd] command %d failed\n", (int)req.cmd);
@@ -366,6 +379,15 @@ void requestPreset(int key) {
 void requestRecent(int slot) {
   Request req = {Cmd::kPlayRecent, slot};
   if (cmdQueue) xQueueSend(cmdQueue, &req, 0);
+}
+
+void requestStream(const String &url, const String &title, const String &artist, const String &artUrl) {
+  if (!stateMutex || !cmdQueue) return;
+  xSemaphoreTake(stateMutex, portMAX_DELAY);
+  pendingStream = {url, title, artist, artUrl};
+  xSemaphoreGive(stateMutex);
+  Request req = {Cmd::kPlayStream, 0};
+  xQueueSend(cmdQueue, &req, 0);
 }
 
 void requestVolume(int volume0to100) {

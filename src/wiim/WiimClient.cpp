@@ -116,7 +116,22 @@ void xmlUnescapeOnce(String &s) {
   s.replace("&amp;", "&");
 }
 
+String xmlEscape(const String &s) {
+  String out = s;
+  out.replace("&", "&amp;");
+  out.replace("<", "&lt;");
+  out.replace(">", "&gt;");
+  out.replace("\"", "&quot;");
+  return out;
+}
+
 bool WiimClient::soap(const char *action, const String &argsXml, String *response, size_t maxResponseBytes) {
+  return upnp("urn:schemas-wiimu-com:service:PlayQueue:1", "PlayQueue1", action, argsXml, response,
+              maxResponseBytes);
+}
+
+bool WiimClient::upnp(const char *service, const char *path, const char *action, const String &argsXml,
+                      String *response, size_t maxResponseBytes) {
   // Called rarely (presets refresh, album capture/replay), so a throwaway plain-HTTP connection
   // is fine here -- no need for the persistent TLS one getJson() keeps.
   String body;
@@ -124,7 +139,9 @@ bool WiimClient::soap(const char *action, const String &argsXml, String *respons
   body += "<?xml version=\"1.0\"?><s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\" "
           "s:encodingStyle=\"http://schemas.xmlsoap.org/soap/encoding/\"><s:Body><u:";
   body += action;
-  body += " xmlns:u=\"urn:schemas-wiimu-com:service:PlayQueue:1\">";
+  body += " xmlns:u=\"";
+  body += service;
+  body += "\">";
   body += argsXml;
   body += "</u:";
   body += action;
@@ -132,12 +149,12 @@ bool WiimClient::soap(const char *action, const String &argsXml, String *respons
 
   NetworkClient plain;
   HTTPClient http;
-  if (!http.begin(plain, "http://" + host_ + ":49152/upnp/control/PlayQueue1")) {
+  if (!http.begin(plain, "http://" + host_ + ":49152/upnp/control/" + path)) {
     return false;
   }
   http.setTimeout(5000);
   http.addHeader("Content-Type", "text/xml; charset=\"utf-8\"");
-  http.addHeader("SOAPACTION", String("\"urn:schemas-wiimu-com:service:PlayQueue:1#") + action + "\"");
+  http.addHeader("SOAPACTION", String("\"") + service + "#" + action + "\"");
   int code = http.POST((uint8_t *)body.c_str(), body.length());
   if (code != HTTP_CODE_OK) {
     http.end();
@@ -228,6 +245,23 @@ bool WiimClient::fetchPresets(PresetList &list) {
 }
 
 bool WiimClient::playPreset(int key) { return sendCommand("MCUKeyShortClick:" + String(key)); }
+
+bool WiimClient::playStream(const String &url, const String &title, const String &artist,
+                            const String &artUrl) {
+  const char *transport = "urn:schemas-upnp-org:service:AVTransport:1";
+  String didl = "<DIDL-Lite xmlns=\"urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/\" "
+                "xmlns:dc=\"http://purl.org/dc/elements/1.1/\" "
+                "xmlns:upnp=\"urn:schemas-upnp-org:metadata-1-0/upnp/\">"
+                "<item id=\"0\" parentID=\"-1\" restricted=\"1\"><dc:title>" +
+                xmlEscape(title) + "</dc:title><upnp:artist>" + xmlEscape(artist) +
+                "</upnp:artist><upnp:albumArtURI>" + xmlEscape(artUrl) +
+                "</upnp:albumArtURI><upnp:class>object.item.audioItem.audioBroadcast</upnp:class>"
+                "<res protocolInfo=\"http-get:*:*:*\">" + xmlEscape(url) + "</res></item></DIDL-Lite>";
+  String args = "<InstanceID>0</InstanceID><CurrentURI>" + xmlEscape(url) + "</CurrentURI><CurrentURIMetaData>" +
+                xmlEscape(didl) + "</CurrentURIMetaData>";
+  return upnp(transport, "rendertransport1", "SetAVTransportURI", args, nullptr, 0) &&
+         upnp(transport, "rendertransport1", "Play", "<InstanceID>0</InstanceID><Speed>1</Speed>", nullptr, 0);
+}
 
 bool WiimClient::togglePause() { return sendCommand("setPlayerCmd:onepause"); }
 bool WiimClient::next() { return sendCommand("setPlayerCmd:next"); }

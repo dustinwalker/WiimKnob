@@ -71,6 +71,9 @@ public:
   bool previous();
   bool setVolume(int volume0to100);
   bool playPreset(int key); // 1-based slot, same as pressing it in the WiiM Home app
+  // UPnP SetAVTransportURI + Play. The DIDL-Lite metadata is what getMetaInfo reports back;
+  // setPlayerCmd:play:<url> reports the URL itself as the title, with no art.
+  bool playStream(const String &url, const String &title, const String &artist, const String &artUrl);
 
   // UPnP PlayQueue service call (plain HTTP, port 49152). argsXml goes inside the action
   // element as-is, so it must already be XML-escaped. On success, *response (if given) gets
@@ -86,6 +89,8 @@ public:
 private:
   bool getJson(const String &command, JsonDocument &doc, const JsonDocument *filter = nullptr);
   bool fetchKeyMapping(String &decodedXml);
+  bool upnp(const char *service, const char *path, const char *action, const String &argsXml,
+            String *response, size_t maxResponseBytes);
   bool sendCommand(const String &command);
 
   String host_;
@@ -110,5 +115,6 @@ private:
 // Small XML helpers for the UPnP responses (not a real parser -- these are flat, predictable).
 String tagValue(const String &xml, const char *tag); // first <tag>...</tag>, or empty
 void xmlUnescapeOnce(String &s);                     // one level of entity decoding
+String xmlEscape(const String &s);
 
 } // namespace wiim

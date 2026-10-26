@@ -23,6 +23,7 @@ void requestPrevious();
 void requestTogglePause();
 void requestPreset(int key); // 1-based preset slot
 void requestRecent(int slot); // recent::Entry::slot -- replays that saved album
+void requestStream(const String &url, const String &title, const String &artist, const String &artUrl);
 
 // Non-blocking: only the latest value before each send matters, so rapid knob turns collapse
 // into a handful of network calls instead of one per detent.
