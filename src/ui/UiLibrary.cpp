@@ -1,5 +1,7 @@
 #include "UiInternal.h"
 
+LV_FONT_DECLARE(lv_font_star_16);
+
 namespace ui {
 
 using namespace detail;
@@ -18,6 +20,7 @@ struct ListPage {
   const int *tabOrder;         // how the tabs sit on screen
   void (*onItem)(int tab, int index);
   void (*onTab)(int tab);
+  void (*onHeld)(int tab, int index); // nullptr: holding a row does nothing
   lv_obj_t *tabLabels[kMaxTabs];
   lv_obj_t *lists[kMaxTabs];
   lv_obj_t *thumbs[kMaxTabs][kMaxRows];
@@ -31,8 +34,8 @@ const char *const kLibraryTabs[] = {"History", "Playlists", "Radio", "Up next"};
 const char *const kLibraryEmpty[] = {"Tracks you play from Roon will show up here", "No playlists in Roon yet",
                                      "No stations in My Live Radio", "Nothing queued in Roon"};
 const int kLibraryOrder[] = {0, 3, 1, 2};
-const char *const kTuneInTabs[] = {"Local", "Browse"};
-const int kTuneInOrder[] = {0, 1};
+const char *const kTuneInTabs[] = {"Favorites", "Local", "Browse"};
+const int kTuneInOrder[] = {0, 1, 2};
 
 void libraryItem(int tab, int index) {
   if (callbacks.onLibraryItem) callbacks.onLibraryItem(tab, index);
@@ -46,9 +49,12 @@ void tuneInItem(int tab, int index) {
 void tuneInTab(int tab) {
   if (callbacks.onTuneInTab) callbacks.onTuneInTab(tab);
 }
+void tuneInHeld(int tab, int index) {
+  if (callbacks.onTuneInHeld) callbacks.onTuneInHeld(tab, index);
+}
 
-ListPage library = {kLibrary, 4, kLibraryTabs, kLibraryOrder, libraryItem, libraryTab};
-ListPage tuneIn = {kTuneIn, 2, kTuneInTabs, kTuneInOrder, tuneInItem, tuneInTab};
+ListPage library = {kLibrary, 4, kLibraryTabs, kLibraryOrder, libraryItem, libraryTab, nullptr};
+ListPage tuneIn = {kTuneIn, 3, kTuneInTabs, kTuneInOrder, tuneInItem, tuneInTab, tuneInHeld};
 
 // LVGL still sends CLICKED at the end of a page swipe that started on a row.
 bool wasSwipe() {
@@ -84,6 +90,12 @@ void onRowClicked(lv_event_t *e) {
   if (wasSwipe()) return;
   int packed = (int)(intptr_t)lv_event_get_user_data(e);
   pageFor(packed).onItem(packed % 100000 / 1000, packed % 1000);
+}
+
+void onRowHeld(lv_event_t *e) {
+  int packed = (int)(intptr_t)lv_event_get_user_data(e);
+  ListPage &page = pageFor(packed);
+  if (page.onHeld) page.onHeld(packed % 100000 / 1000, packed % 1000);
 }
 
 lv_obj_t *makeLabel(lv_obj_t *row, const char *text, uint32_t color, lv_align_t align, int y) {
@@ -167,8 +179,13 @@ void setRows(ListPage &page, int tab, const LibraryRow *rows, int count) {
     lv_obj_set_style_bg_color(row, lv_color_hex(0x3a3a3a), LV_STATE_PRESSED);
     lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(row, LV_OBJ_FLAG_GESTURE_BUBBLE);
-    lv_obj_add_event_cb(row, onRowClicked, LV_EVENT_CLICKED,
-                        (void *)(intptr_t)(page.screen * 100000 + tab * 1000 + i));
+    void *packed = (void *)(intptr_t)(page.screen * 100000 + tab * 1000 + i);
+    if (page.onHeld) {
+      lv_obj_add_event_cb(row, onRowClicked, LV_EVENT_SHORT_CLICKED, packed); // a hold mustn't also tap
+      lv_obj_add_event_cb(row, onRowHeld, LV_EVENT_LONG_PRESSED, packed);
+    } else {
+      lv_obj_add_event_cb(row, onRowClicked, LV_EVENT_CLICKED, packed);
+    }
 
     lv_obj_t *img = lv_img_create(row);
     lv_obj_set_size(img, kThumbSize, kThumbSize);
@@ -179,8 +196,16 @@ void setRows(ListPage &page, int tab, const LibraryRow *rows, int count) {
     if (rows[i].thumb) lv_img_set_src(img, rows[i].thumb);
     page.thumbs[tab][i] = img;
 
-    makeLabel(row, rows[i].title, 0xffffff, LV_ALIGN_TOP_LEFT, 2);
+    lv_obj_t *title = makeLabel(row, rows[i].title, 0xffffff, LV_ALIGN_TOP_LEFT, 2);
     makeLabel(row, rows[i].subtitle, 0x9a9a9a, LV_ALIGN_BOTTOM_LEFT, -2);
+    if (rows[i].starred) {
+      lv_obj_set_width(title, 172);
+      lv_obj_t *star = lv_label_create(row);
+      lv_obj_set_style_text_font(star, &lv_font_star_16, 0);
+      lv_obj_set_style_text_color(star, lv_color_hex(0xf5c518), 0);
+      lv_label_set_text(star, "\xEF\x80\x85"); // U+F005
+      lv_obj_align(star, LV_ALIGN_TOP_RIGHT, -4, 3);
+    }
   }
   page.rowCounts[tab] = count;
   lv_obj_scroll_to_y(list, scrollY, LV_ANIM_OFF);
@@ -196,6 +221,7 @@ void setThumb(ListPage &page, int tab, int index, const lv_img_dsc_t *thumb) {
 
 void detail::buildLibraryScreen() {
   for (int i = 0; i < library.tabCount; i++) strlcpy(library.emptyText[i], kLibraryEmpty[i], sizeof(library.emptyText[i]));
+  strlcpy(tuneIn.emptyText[kTuneInFavorites], "Hold a station to save it here", sizeof(tuneIn.emptyText[0]));
   buildPage(library);
   buildPage(tuneIn);
 }

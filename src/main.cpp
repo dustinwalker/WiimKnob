@@ -138,6 +138,12 @@ void onTuneInItem(int tab, int index) {
   ui::setArtPending(true);
 }
 void onTuneInTab(int tab) { tunein::requestLoad((tunein::List)tab); }
+void onTuneInHeld(int tab, int index) {
+  if (tab < 0 || tab >= tunein::kListCount) return;
+  index -= tuneInOffset[tab];
+  if (index < 0 || index >= tuneInCounts[tab]) return;
+  if (tunein::toggleFavorite((tunein::List)tab, index) >= 0) haptics::buzz();
+}
 
 void onShuffle() {
   roon::requestToggleShuffle();
@@ -694,18 +700,20 @@ void syncTuneIn() {
         ui::setTuneInEmptyText(tab, "Loading...");
         continue;
       }
-      ui::setTuneInEmptyText(tab, state == tunein::State::kFailed ? "Couldn't reach TuneIn" : "Nothing here");
+      if (list != tunein::List::kFavorites)
+        ui::setTuneInEmptyText(tab, state == tunein::State::kFailed ? "Couldn't reach TuneIn" : "Nothing here");
       int n = tunein::copyList(list, tuneInRows[tab], tunein::kMaxRows);
       tuneInCounts[tab] = n;
       String parent = tunein::parentTitle(list);
       String back = String(LV_SYMBOL_LEFT "  ") + parent;
       tuneInOffset[tab] = parent.length() ? 1 : 0;
-      if (tuneInOffset[tab]) out[0] = {back.c_str(), "", nullptr};
+      if (tuneInOffset[tab]) out[0] = {back.c_str(), "", nullptr, false};
       for (int i = 0; i < n; i++) {
         const tunein::Row &row = tuneInRows[tab][i];
         const lv_img_dsc_t *thumb = roon::thumbs::get(row.image);
         hasThumb[tab][i] = thumb != nullptr;
-        out[tuneInOffset[tab] + i] = {row.title, row.station ? row.subtitle : LV_SYMBOL_RIGHT, thumb};
+        bool starred = row.station && tunein::isFavorite(row.target);
+        out[tuneInOffset[tab] + i] = {row.title, row.station ? row.subtitle : LV_SYMBOL_RIGHT, thumb, starred};
       }
       ui::setTuneInRows(tab, out, tuneInOffset[tab] + n);
       if (parent != seenParent[tab]) {
@@ -860,7 +868,7 @@ void setup() {
   display::begin();
 
   ui::Callbacks callbacks = {onPrev, onNext, onPlayPause, onPreset, onRecent, onSettingTapped, onWifiSetup,
-                                onLibraryItem, onLibraryTab, onTuneInItem, onTuneInTab, onShuffle, onRepeat};
+                                onLibraryItem, onLibraryTab, onTuneInItem, onTuneInTab, onTuneInHeld, onShuffle, onRepeat};
   ui::begin(callbacks);
 
   settings::begin();

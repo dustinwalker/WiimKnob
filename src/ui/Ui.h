@@ -16,6 +16,7 @@ struct Callbacks {
   void (*onLibraryTab)(int tab);
   void (*onTuneInItem)(int tab, int index);
   void (*onTuneInTab)(int tab);
+  void (*onTuneInHeld)(int tab, int index);
   void (*onShuffle)();
   void (*onRepeat)();
 };
@@ -26,13 +27,15 @@ constexpr int kLibraryPlaylists = 1;
 constexpr int kLibraryRadio = 2;
 constexpr int kLibraryQueue = 3;
 
-constexpr int kTuneInLocal = 0;
-constexpr int kTuneInBrowse = 1;
+constexpr int kTuneInFavorites = 0;
+constexpr int kTuneInLocal = 1;
+constexpr int kTuneInBrowse = 2;
 
 struct LibraryRow {
   const char *title;
   const char *subtitle;
   const lv_img_dsc_t *thumb; // nullptr shows a blank square until setLibraryThumb()
+  bool starred;
 };
 
 enum class PresetIcon { kDisc, kHeadphones, kEq, kMusic };
