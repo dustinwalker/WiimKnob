@@ -8,6 +8,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 #include <freertos/semphr.h>
+#include <freertos/idf_additions.h>
 #include <freertos/task.h>
 
 namespace tunein {
@@ -192,7 +193,8 @@ void begin() {
     strlcpy(lists[i].levels[0].query, roots[i][0], sizeof(Level::query));
     strlcpy(lists[i].levels[0].title, roots[i][1], sizeof(Level::title));
   }
-  xTaskCreatePinnedToCore(taskFn, "tunein", 8192, nullptr, 1, nullptr, 0);
+  // PSRAM stack: safe only because this task never writes flash (no NVS, no LittleFS)
+  xTaskCreatePinnedToCoreWithCaps(taskFn, "tunein", 8192, nullptr, 1, nullptr, 0, MALLOC_CAP_SPIRAM);
 }
 
 void requestLoad(List which) { send(Command::kLoad, which, 0); }

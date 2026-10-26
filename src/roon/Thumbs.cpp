@@ -8,6 +8,7 @@
 #include <esp_heap_caps.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
+#include <freertos/idf_additions.h>
 #include <freertos/task.h>
 #include <new>
 
@@ -187,7 +188,8 @@ void begin() {
     s.desc.data_size = kSize * kSize * 2;
     s.desc.data = (const uint8_t *)s.pixels;
   }
-  xTaskCreatePinnedToCore(taskFn, "roon-img", 8192, nullptr, 1, nullptr, 0);
+  // PSRAM stack: safe only because this task never writes flash (no NVS, no LittleFS)
+  xTaskCreatePinnedToCoreWithCaps(taskFn, "roon-img", 8192, nullptr, 1, nullptr, 0, MALLOC_CAP_SPIRAM);
 }
 
 const lv_img_dsc_t *get(const char *imageKey) {
