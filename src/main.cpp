@@ -8,6 +8,7 @@
 #include <lvgl.h>
 
 #include "Config.h"
+#include "FwVersion.h"
 #include "display/DisplayDriver.h"
 #include "haptics/Haptics.h"
 #include "input/Knob.h"
@@ -401,9 +402,9 @@ void beginStatusServer() {
   statusServer.on("/status", HTTP_GET, []() {
     wiim::task::Diagnostics d = wiim::task::diagnostics();
     const power::BootInfo &boot = power::lastBoot();
-    char body[800];
+    char body[900];
     snprintf(body, sizeof(body),
-             "{\"voltage\":%.3f,\"percent\":%d,\"usb_power\":%s,\"uptime_s\":%lu,"
+             "{\"firmware\":\"%s\",\"voltage\":%.3f,\"percent\":%d,\"usb_power\":%s,\"uptime_s\":%lu,"
              "\"heap_internal\":%u,\"heap_internal_min\":%u,\"heap_internal_largest\":%u,"
              "\"rssi\":%d,\"meta_ok\":%u,\"meta_failures\":%u,\"art_failures\":%u,"
              "\"meta_age_s\":%lu,\"cpu_mhz\":%lu,\"screen_on\":%s,"
@@ -411,7 +412,7 @@ void beginStatusServer() {
              "\"sleep_voltage\":%.3f,\"sleep_reason\":\"%s\"},"
              "\"battery_cal\":{\"running\":%s,\"minutes\":%lu,\"learned_curve\":%s,"
              "\"learned_run_min\":%lu}}\n",
-             lastBattery.voltage, lastBattery.percent, lastBattery.externalPower ? "true" : "false",
+             FW_VERSION, lastBattery.voltage, lastBattery.percent, lastBattery.externalPower ? "true" : "false",
              millis() / 1000, (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
              (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
              (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL), WiFi.RSSI(), d.metaOk,

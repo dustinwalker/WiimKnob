@@ -3,3 +3,4 @@
 include/Config.h
 *.orig
 .claude/
+include/FwVersion.h
