@@ -489,9 +489,12 @@ void handleTuneIn() {
 
 void beginStatusServer() {
   statusServer.on("/tunein", HTTP_GET, handleTuneIn);
-  // Same as holding the art: /star?toggle=1 stars or unstars what's playing.
+  // Same as holding the art: /star?toggle=1 stars or unstars what's playing. &play=N and
+  // &remove=N act on the Library starred tab.
   statusServer.on("/star", HTTP_GET, []() {
     JsonDocument out;
+    if (statusServer.hasArg("play")) roon::requestPlay(roon::List::kFavorites, statusServer.arg("play").toInt());
+    if (statusServer.hasArg("remove")) out["removed"] = roon::removeFavorite(statusServer.arg("remove").toInt());
     if (statusServer.hasArg("toggle")) {
       String what;
       out["result"] = starPlaying(&what);
