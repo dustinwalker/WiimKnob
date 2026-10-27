@@ -145,6 +145,57 @@ void onTuneInHeld(int tab, int index) {
   if (tunein::toggleFavorite((tunein::List)tab, index) >= 0) haptics::buzz();
 }
 
+bool playingStation(tunein::Row &out) {
+  return tunein::startedStation(out) && wiim::task::getMetadata().title == out.title;
+}
+
+// -2: nothing starrable is playing, -1: the list is full, else what toggleFavorite returned.
+int starPlaying(String *what = nullptr) {
+  roon::Zone zone;
+  tunein::Row station;
+  if (roon::sourceZone(zone)) {
+    if (what) *what = "roon: " + zone.title + " / " + zone.artist;
+    return roon::toggleFavorite(zone);
+  }
+  if (playingStation(station)) {
+    if (what) *what = String("tunein: ") + station.title;
+    return tunein::toggleFavorite(station);
+  }
+  return -2;
+}
+
+bool playingIsStarred() {
+  roon::Zone zone;
+  tunein::Row station;
+  if (roon::sourceZone(zone)) return roon::isFavorite(zone.title, zone.artist);
+  return playingStation(station) && tunein::isFavorite(station.target);
+}
+
+void onArtHeld() {
+  int result = starPlaying();
+  if (result < -1) {
+    ui::showToast("Can't star this");
+    return;
+  }
+  if (result < 0) {
+    ui::showToast("Favorites are full");
+    return;
+  }
+  haptics::buzz();
+  ui::flashStar(result == 1);
+}
+
+void syncStarred() {
+  static uint32_t lastMs = 0;
+  static int shown = -1;
+  if (millis() - lastMs < 500) return;
+  lastMs = millis();
+  int starred = playingIsStarred();
+  if (starred == shown) return;
+  shown = starred;
+  ui::setStarred(starred);
+}
+
 void onShuffle() {
   roon::requestToggleShuffle();
   haptics::buzz();
@@ -875,7 +926,7 @@ void setup() {
   display::begin();
 
   ui::Callbacks callbacks = {onPrev, onNext, onPlayPause, onPreset, onRecent, onSettingTapped, onWifiSetup,
-                                onLibraryItem, onLibraryTab, onLibraryHeld, onTuneInItem, onTuneInTab, onTuneInHeld, onShuffle, onRepeat};
+                                onLibraryItem, onLibraryTab, onLibraryHeld, onTuneInItem, onTuneInTab, onTuneInHeld, onShuffle, onRepeat, onArtHeld};
   ui::begin(callbacks);
 
   settings::begin();
@@ -978,6 +1029,7 @@ void loop() {
   syncRecent();
   if (screenOn) syncLibrary();
   if (screenOn) syncTuneIn();
+  if (screenOn) syncStarred();
   serviceBattery();
   power::service();
   settings::service();

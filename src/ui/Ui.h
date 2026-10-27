@@ -20,6 +20,7 @@ struct Callbacks {
   void (*onTuneInHeld)(int tab, int index);
   void (*onShuffle)();
   void (*onRepeat)();
+  void (*onArtHeld)();
 };
 
 // Library page tabs, in order.
@@ -111,6 +112,12 @@ void setTuneInRows(int tab, const LibraryRow *rows, int count); // text is copie
 void setTuneInThumb(int tab, int index, const lv_img_dsc_t *thumb);
 void setTuneInEmptyText(int tab, const char *text);
 void scrollTuneInToTop(int tab); // after drilling in or out
+
+// Now playing: a star under the volume while the playing item is starred, a big star flash
+// when a hold on the art changes that, and a short notice when there's nothing to star.
+void setStarred(bool starred);
+void flashStar(bool starred);
+void showToast(const char *text);
 
 // Shuffle and repeat beside the battery icon, shown while Roon is the source. repeat: 0 off, 1 all, 2 one.
 void setRoonModes(bool show, bool shuffle, int repeat);

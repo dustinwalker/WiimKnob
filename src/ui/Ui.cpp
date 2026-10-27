@@ -4,6 +4,8 @@
 LV_FONT_DECLARE(lv_font_preset_icons_26);
 // Prev/play/pause/next only, sized for the media controls over the art.
 LV_FONT_DECLARE(lv_font_media_icons_36);
+LV_FONT_DECLARE(lv_font_star_16);
+LV_FONT_DECLARE(lv_font_star_40);
 // Digits 0-9 only, for the big volume readout on the full-screen art page.
 LV_FONT_DECLARE(lv_font_montserrat_96_digits);
 
@@ -58,6 +60,11 @@ lv_obj_t *volumeArc = nullptr;
 lv_obj_t *volumeLabel = nullptr;
 lv_obj_t *titleLabel = nullptr;
 lv_obj_t *artistLabel = nullptr;
+lv_obj_t *starBadge = nullptr;
+lv_obj_t *starFlash = nullptr;
+lv_obj_t *starFlashIcon = nullptr;
+lv_obj_t *toast = nullptr;
+lv_obj_t *toastLabel = nullptr;
 lv_obj_t *playPauseIcon = nullptr;
 lv_obj_t *statusDot = nullptr;
 lv_obj_t *batteryBadge = nullptr;      // clickable: taps toggle icon <-> percent
@@ -254,6 +261,12 @@ void onArtTapped(lv_event_t *e) {
     return; // end of a swipe to another screen, not a tap
   }
   setControlsShown(!controlsShown);
+}
+
+void onArtHeld(lv_event_t *) {
+  lv_indev_t *indev = lv_indev_get_act();
+  if (indev && lv_indev_get_gesture_dir(indev) != LV_DIR_NONE) return;
+  if (callbacks.onArtHeld) callbacks.onArtHeld();
 }
 
 void dotBounceCb(void *dot, int32_t v) { lv_obj_set_style_translate_y((lv_obj_t *)dot, -v, 0); }
@@ -553,6 +566,7 @@ void begin(const Callbacks &cbs) {
   lv_obj_add_flag(artImg, LV_OBJ_FLAG_HIDDEN);
   // The art isn't clickable, so taps anywhere land on the screen itself.
   lv_obj_add_event_cb(np, onArtTapped, LV_EVENT_SHORT_CLICKED, NULL);
+  lv_obj_add_event_cb(np, onArtHeld, LV_EVENT_LONG_PRESSED, NULL);
 
   controlsLayer = lv_obj_create(np);
   lv_obj_set_size(controlsLayer, 360, 360);
@@ -611,6 +625,38 @@ void begin(const Callbacks &cbs) {
   lv_obj_clear_flag(skipSpinner, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_flag(skipSpinner, LV_OBJ_FLAG_HIDDEN);
   lv_timer_create(skipTimerCb, 250, NULL);
+
+  starFlash = lv_obj_create(np);
+  lv_obj_set_size(starFlash, 96, 96);
+  lv_obj_set_style_radius(starFlash, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_bg_color(starFlash, lv_color_black(), 0);
+  lv_obj_set_style_bg_opa(starFlash, LV_OPA_60, 0);
+  lv_obj_set_style_border_width(starFlash, 0, 0);
+  lv_obj_set_style_pad_all(starFlash, 0, 0);
+  lv_obj_center(starFlash);
+  lv_obj_clear_flag(starFlash, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_clear_flag(starFlash, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_flag(starFlash, LV_OBJ_FLAG_HIDDEN);
+  starFlashIcon = lv_label_create(starFlash);
+  lv_obj_set_style_text_font(starFlashIcon, &lv_font_star_40, 0);
+  lv_label_set_text(starFlashIcon, "\xEF\x80\x85");
+  lv_obj_center(starFlashIcon);
+
+  toast = lv_obj_create(np);
+  lv_obj_set_size(toast, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+  lv_obj_set_style_radius(toast, 18, 0);
+  lv_obj_set_style_bg_color(toast, lv_color_black(), 0);
+  lv_obj_set_style_bg_opa(toast, LV_OPA_70, 0);
+  lv_obj_set_style_border_width(toast, 0, 0);
+  lv_obj_set_style_pad_hor(toast, 16, 0);
+  lv_obj_set_style_pad_ver(toast, 8, 0);
+  lv_obj_center(toast);
+  lv_obj_clear_flag(toast, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_clear_flag(toast, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_flag(toast, LV_OBJ_FLAG_HIDDEN);
+  toastLabel = lv_label_create(toast);
+  lv_obj_set_style_text_font(toastLabel, &lv_font_montserrat_16_latin, 0);
+  lv_obj_set_style_text_color(toastLabel, lv_color_white(), 0);
 
   loadingDots = lv_obj_create(np);
   lv_obj_set_size(loadingDots, 60, 60);
@@ -762,6 +808,13 @@ void begin(const Callbacks &cbs) {
   lv_obj_set_style_text_color(titleLabel, lv_color_white(), 0);
   lv_obj_align(titleLabel, LV_ALIGN_CENTER, 0, 22);
   lv_label_set_text(titleLabel, "Not playing");
+
+  starBadge = lv_label_create(ctrl);
+  lv_obj_set_style_text_font(starBadge, &lv_font_star_16, 0);
+  lv_obj_set_style_text_color(starBadge, lv_color_hex(0xf5c518), 0);
+  lv_label_set_text(starBadge, "\xEF\x80\x85");
+  lv_obj_align(starBadge, LV_ALIGN_CENTER, 0, -3); // in the gap between the volume and the title
+  lv_obj_add_flag(starBadge, LV_OBJ_FLAG_HIDDEN);
 
   artistLabel = lv_label_create(ctrl);
   lv_obj_set_width(artistLabel, 260);
@@ -960,6 +1013,28 @@ void setRecentEnabled(bool enabled) {
   if (pageEnabled[kRecent] == enabled) return;
   pageEnabled[kRecent] = enabled;
   layoutPageDots();
+}
+
+void setStarred(bool starred) {
+  if (starred) lv_obj_clear_flag(starBadge, LV_OBJ_FLAG_HIDDEN);
+  else lv_obj_add_flag(starBadge, LV_OBJ_FLAG_HIDDEN);
+}
+
+void flashStar(bool starred) {
+  lv_obj_set_style_text_color(starFlashIcon, lv_color_hex(starred ? 0xf5c518 : 0x8a8a8a), 0);
+  lv_anim_del(starFlash, NULL);
+  lv_obj_set_style_opa(starFlash, LV_OPA_COVER, 0);
+  lv_obj_clear_flag(starFlash, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_fade_out(starFlash, 400, 700);
+  setStarred(starred);
+}
+
+void showToast(const char *text) {
+  lv_label_set_text(toastLabel, text);
+  lv_anim_del(toast, NULL);
+  lv_obj_set_style_opa(toast, LV_OPA_COVER, 0);
+  lv_obj_clear_flag(toast, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_fade_out(toast, 400, 1500);
 }
 
 void setTrack(const char *title, const char *artist) {
