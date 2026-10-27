@@ -1,5 +1,6 @@
 #include "Roon.h"
 #include "WsClient.h"
+#include "wiim/RecentAlbums.h"
 
 #include <ArduinoJson.h>
 #include <LittleFS.h>
@@ -25,6 +26,7 @@ constexpr const char *kServiceId = "00720724-5143-4a9b-abac-0e50cba674bb";
 constexpr const char *kBrowse = "com.roonlabs.browse:1/browse";
 constexpr const char *kLoad = "com.roonlabs.browse:1/load";
 constexpr const char *kHistoryPath = "/roon_history.json";
+constexpr const char *kFavoritesPath = "/roon_favorites.json";
 constexpr uint16_t kSoodPort = 9003;
 constexpr uint32_t kPingEveryMs = 10000;
 constexpr uint32_t kDeadAfterMs = 35000;
@@ -119,28 +121,28 @@ void saveCore() {
 void copyField(char *dst, size_t size, const char *src) { strlcpy(dst, src ? src : "", size); }
 
 // History: newest first, kept in PSRAM and saved to flash a few seconds after it changes.
-void loadHistory() {
+void loadRows(const char *path, List which, int max) {
   if (!LittleFS.begin(true)) return;
-  File f = LittleFS.open(kHistoryPath, "r");
+  File f = LittleFS.open(path, "r");
   if (!f) return;
   JsonDocument doc(&spiRam);
   if (deserializeJson(doc, f)) return;
   int n = 0;
   for (JsonArray e : doc.as<JsonArray>()) {
-    if (n >= kMaxRows) break;
-    Row &r = rows[(int)List::kHistory][n++];
+    if (n >= max) break;
+    Row &r = rows[(int)which][n++];
     copyField(r.title, sizeof(r.title), e[0]);
     copyField(r.subtitle, sizeof(r.subtitle), e[1]);
     copyField(r.imageKey, sizeof(r.imageKey), e[2]);
   }
-  rowCount[(int)List::kHistory] = n;
+  rowCount[(int)which] = n;
 }
 
-void saveHistory() {
+void saveRows(const char *path, List which) {
   JsonDocument doc(&spiRam);
   xSemaphoreTake(mutex, portMAX_DELAY);
-  for (int i = 0; i < rowCount[(int)List::kHistory]; i++) {
-    const Row &r = rows[(int)List::kHistory][i];
+  for (int i = 0; i < rowCount[(int)which]; i++) {
+    const Row &r = rows[(int)which][i];
     JsonArray e = doc.add<JsonArray>();
     e.add(r.title);
     e.add(r.subtitle);
@@ -148,9 +150,19 @@ void saveHistory() {
   }
   xSemaphoreGive(mutex);
   if (!LittleFS.begin(true)) return;
-  File f = LittleFS.open(kHistoryPath, "w");
+  File f = LittleFS.open(path, "w");
   if (!f) return;
   serializeJson(doc, f);
+}
+
+// Called with the mutex held.
+int findFavorite(const String &title, const String &artist) {
+  String main = wiim::recent::primaryArtist(artist);
+  for (int i = 0; i < rowCount[(int)List::kFavorites]; i++) {
+    const Row &r = rows[(int)List::kFavorites][i];
+    if (title.equalsIgnoreCase(r.title) && wiim::recent::primaryArtist(r.subtitle) == main) return i;
+  }
+  return -1;
 }
 
 // Called with the mutex held.
@@ -574,6 +586,29 @@ String findTrack(JsonArray items, const char *title) {
   return "";
 }
 
+// Roon keeps no history the API can reach, so a past track is found again by search.
+bool playBySearch(const Row &row, const String &zoneId) {
+  JsonDocument doc(&spiRam);
+  String artist = row.subtitle;
+  int comma = artist.indexOf(',');
+  if (comma > 0) artist = artist.substring(0, comma);
+  String query = String(row.title) + " " + artist;
+  if (!browse("search", nullptr, query.c_str(), true, zoneId, doc) || !load("search", doc)) return false;
+  String key = findTrack(doc["items"], row.title);
+  if (key.isEmpty()) {
+    for (JsonObject item : doc["items"].as<JsonArray>()) {
+      if (strcmp(item["title"] | "", "Tracks") != 0) continue;
+      JsonDocument tracks(&spiRam);
+      String tracksKey = item["item_key"] | "";
+      if (browse("search", tracksKey.c_str(), nullptr, false, zoneId, tracks) && load("search", tracks)) {
+        key = findTrack(tracks["items"], row.title);
+      }
+      break;
+    }
+  }
+  return key.length() && playFrom("search", key, zoneId);
+}
+
 void play(List which, int index) {
   String zoneId = wiimZoneId();
   if (zoneId.isEmpty()) {
@@ -592,27 +627,8 @@ void play(List which, int index) {
   if (which == List::kQueue) {
     ok = call("com.roonlabs.transport:2/play_from_here",
               String("{\"zone_or_output_id\":\"") + zoneId + "\",\"queue_item_id\":" + queueItemIds[index] + "}", doc);
-  } else if (which == List::kHistory) {
-    // Roon keeps no history the API can reach, so a past track is found again by search.
-    String artist = row.subtitle;
-    int comma = artist.indexOf(',');
-    if (comma > 0) artist = artist.substring(0, comma);
-    String query = String(row.title) + " " + artist;
-    if (browse("search", nullptr, query.c_str(), true, zoneId, doc) && load("search", doc)) {
-      String key = findTrack(doc["items"], row.title);
-      if (key.isEmpty()) {
-        for (JsonObject item : doc["items"].as<JsonArray>()) {
-          if (strcmp(item["title"] | "", "Tracks") != 0) continue;
-          JsonDocument tracks(&spiRam);
-          String tracksKey = item["item_key"] | "";
-          if (browse("search", tracksKey.c_str(), nullptr, false, zoneId, tracks) && load("search", tracks)) {
-            key = findTrack(tracks["items"], row.title);
-          }
-          break;
-        }
-      }
-      if (key.length()) ok = playFrom("search", key, zoneId);
-    }
+  } else if (which == List::kHistory || which == List::kFavorites) {
+    ok = playBySearch(row, zoneId);
   } else {
     const char *h = hierarchyFor(which);
     if (browse(h, nullptr, nullptr, true, zoneId, doc) && load(h, doc)) {
@@ -704,7 +720,7 @@ void taskFn(void *) {
     uint32_t now = millis();
     if (historyDirty && now - historyChangedMs > kHistorySaveDelayMs) {
       historyDirty = false;
-      saveHistory();
+      saveRows(kHistoryPath, List::kHistory);
     }
     if (!active) {
       if (ws.connected()) disconnect();
@@ -798,7 +814,8 @@ void begin(const String &deviceName) {
   for (Row *&r : rows) r = (Row *)heap_caps_calloc(kMaxRows, sizeof(Row), MALLOC_CAP_SPIRAM);
   queueItemIds = (uint32_t *)heap_caps_calloc(kMaxRows, sizeof(uint32_t), MALLOC_CAP_SPIRAM);
   loadState();
-  loadHistory();
+  loadRows(kHistoryPath, List::kHistory, kMaxRows);
+  loadRows(kFavoritesPath, List::kFavorites, kMaxFavorites);
   xTaskCreatePinnedToCore(taskFn, "roon", 12288, nullptr, 1, nullptr, 0);
 }
 
@@ -911,6 +928,53 @@ int copyList(List which, Row *out, int max) {
 
 uint32_t listsVersion() { return listsVersionCounter; }
 
+int toggleFavorite(const Zone &zone) {
+  if (zone.title.isEmpty()) return -1;
+  xSemaphoreTake(mutex, portMAX_DELAY);
+  Row *list = rows[(int)List::kFavorites];
+  int &count = rowCount[(int)List::kFavorites];
+  int at = findFavorite(zone.title, zone.artist);
+  int result = -1;
+  if (at >= 0) {
+    memmove(&list[at], &list[at + 1], (count - at - 1) * sizeof(Row));
+    count--;
+    result = 0;
+  } else if (count < kMaxFavorites) {
+    Row &r = list[count++];
+    copyField(r.title, sizeof(r.title), zone.title.c_str());
+    copyField(r.subtitle, sizeof(r.subtitle), zone.artist.c_str());
+    copyField(r.imageKey, sizeof(r.imageKey), zone.imageKey.c_str());
+    result = 1;
+  }
+  if (result >= 0) listsVersionCounter++;
+  xSemaphoreGive(mutex);
+  if (result >= 0) saveRows(kFavoritesPath, List::kFavorites);
+  return result;
+}
+
+bool removeFavorite(int index) {
+  xSemaphoreTake(mutex, portMAX_DELAY);
+  Row *list = rows[(int)List::kFavorites];
+  int &count = rowCount[(int)List::kFavorites];
+  bool ok = index >= 0 && index < count;
+  if (ok) {
+    memmove(&list[index], &list[index + 1], (count - index - 1) * sizeof(Row));
+    count--;
+    listsVersionCounter++;
+  }
+  xSemaphoreGive(mutex);
+  if (ok) saveRows(kFavoritesPath, List::kFavorites);
+  return ok;
+}
+
+bool isFavorite(const String &title, const String &artist) {
+  if (title.isEmpty()) return false;
+  xSemaphoreTake(mutex, portMAX_DELAY);
+  bool found = findFavorite(title, artist) >= 0;
+  xSemaphoreGive(mutex);
+  return found;
+}
+
 void requestPlay(List which, int index) {
   Command c = {Command::kPlay, (uint8_t)which, (int16_t)index, ""};
   xQueueSend(commands, &c, 0);
@@ -949,7 +1013,7 @@ String statusJson() {
                 ",\"wiim_zone\":\"" + jsonEscape(zone) + "\",\"roon_is_source\":" +
                 (sourceMatched ? "true" : "false") + ",\"history\":" + rowCount[(int)List::kHistory] +
                 ",\"playlists\":" + rowCount[(int)List::kPlaylists] + ",\"radio\":" +
-                rowCount[(int)List::kRadio] + ",\"queue\":" + rowCount[(int)List::kQueue] + "}";
+                rowCount[(int)List::kRadio] + ",\"queue\":" + rowCount[(int)List::kQueue] + ",\"favorites\":" + rowCount[(int)List::kFavorites] + "}";
   xSemaphoreGive(mutex);
   return json;
 }

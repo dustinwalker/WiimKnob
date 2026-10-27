@@ -28,9 +28,10 @@ struct Row {
   char imageKey[48];
 };
 
-enum class List { kHistory, kPlaylists, kRadio, kQueue };
-constexpr int kListCount = 4;
+enum class List { kHistory, kPlaylists, kRadio, kQueue, kFavorites };
+constexpr int kListCount = 5;
 constexpr int kMaxRows = 100;
+constexpr int kMaxFavorites = 50;
 
 // Call once Wi-Fi is up. deviceName tells knobs apart in Roon's Extensions list.
 void begin(const String &deviceName);
@@ -53,6 +54,12 @@ uint32_t version();
 
 int copyList(List which, Row *out, int max);
 uint32_t listsVersion();
+
+// Kept on the knob: Roon's add-on API can't set Roon's own favorites. These write flash, so
+// call them from a task with an internal-RAM stack. toggle returns 1 added, 0 removed, -1 no track.
+int toggleFavorite(const Zone &zone);
+bool removeFavorite(int index);
+bool isFavorite(const String &title, const String &artist);
 
 // Non-blocking; the Roon task carries these out.
 void requestPlay(List which, int index);
