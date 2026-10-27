@@ -109,7 +109,7 @@ void onLibraryItem(int tab, int index) {
   pendingPlay.fromTitle = wiim::task::getMetadata().title;
   pendingPlay.startedMs = millis();
   ui::hideControlsNow();
-  bool track = tab == ui::kLibraryHistory || tab == ui::kLibraryQueue;
+  bool track = tab == ui::kLibraryHistory || tab == ui::kLibraryQueue || tab == ui::kLibraryFavorites;
   ui::setTrack(row.title, track ? row.subtitle : "");
   ui::setArtPending(true);
 }
@@ -152,6 +152,9 @@ void onShuffle() {
 void onRepeat() {
   roon::requestCycleRepeat();
   haptics::buzz();
+}
+void onLibraryHeld(int tab, int index) {
+  if (tab == ui::kLibraryFavorites && roon::removeFavorite(index)) haptics::buzz();
 }
 void onLibraryTab(int tab) {
   static uint32_t lastRefreshMs = 0;
@@ -661,7 +664,7 @@ void syncLibrary() {
       for (int i = 0; i < n; i++) {
         const lv_img_dsc_t *thumb = roon::thumbs::get(rows[tab][i].imageKey);
         hasThumb[tab][i] = thumb != nullptr;
-        out[i] = {rows[tab][i].title, rows[tab][i].subtitle, thumb};
+        out[i] = {rows[tab][i].title, rows[tab][i].subtitle, thumb, false};
       }
       ui::setLibraryRows(tab, out, n);
     }
@@ -872,7 +875,7 @@ void setup() {
   display::begin();
 
   ui::Callbacks callbacks = {onPrev, onNext, onPlayPause, onPreset, onRecent, onSettingTapped, onWifiSetup,
-                                onLibraryItem, onLibraryTab, onTuneInItem, onTuneInTab, onTuneInHeld, onShuffle, onRepeat};
+                                onLibraryItem, onLibraryTab, onLibraryHeld, onTuneInItem, onTuneInTab, onTuneInHeld, onShuffle, onRepeat};
   ui::begin(callbacks);
 
   settings::begin();

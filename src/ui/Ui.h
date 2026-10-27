@@ -14,6 +14,7 @@ struct Callbacks {
   void (*onWifiSetup)(); // held, not tapped: it restarts the knob into setup mode
   void (*onLibraryItem)(int tab, int index);
   void (*onLibraryTab)(int tab);
+  void (*onLibraryHeld)(int tab, int index);
   void (*onTuneInItem)(int tab, int index);
   void (*onTuneInTab)(int tab);
   void (*onTuneInHeld)(int tab, int index);
@@ -26,6 +27,7 @@ constexpr int kLibraryHistory = 0;
 constexpr int kLibraryPlaylists = 1;
 constexpr int kLibraryRadio = 2;
 constexpr int kLibraryQueue = 3;
+constexpr int kLibraryFavorites = 4;
 
 constexpr int kTuneInFavorites = 0;
 constexpr int kTuneInLocal = 1;
