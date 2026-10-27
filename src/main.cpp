@@ -489,6 +489,22 @@ void handleTuneIn() {
 
 void beginStatusServer() {
   statusServer.on("/tunein", HTTP_GET, handleTuneIn);
+  // Same as holding the art: /star?toggle=1 stars or unstars what's playing.
+  statusServer.on("/star", HTTP_GET, []() {
+    JsonDocument out;
+    if (statusServer.hasArg("toggle")) {
+      String what;
+      out["result"] = starPlaying(&what);
+      out["what"] = what;
+    }
+    out["starred"] = playingIsStarred();
+    static roon::Row *rows = (roon::Row *)heap_caps_calloc(roon::kMaxFavorites, sizeof(roon::Row), MALLOC_CAP_SPIRAM);
+    int n = roon::copyList(roon::List::kFavorites, rows, roon::kMaxFavorites);
+    for (int i = 0; i < n; i++) out["roon"].add(String(rows[i].title) + " / " + rows[i].subtitle);
+    String body;
+    serializeJson(out, body);
+    statusServer.send(200, "application/json", body + "\n");
+  });
   statusServer.on("/status", HTTP_GET, []() {
     wiim::task::Diagnostics d = wiim::task::diagnostics();
     const power::BootInfo &boot = power::lastBoot();
