@@ -41,6 +41,10 @@ uint32_t version();
 // when removed, -1 for a link row or a full list. Writes flash: never call it from the TuneIn task.
 int toggleFavorite(List which, int index);
 bool isFavorite(const char *guideId);
+int toggleFavorite(const Row &station);
+
+// The last station the knob sent to the WiiM. The WiiM may have moved on since: compare titles.
+bool startedStation(Row &out);
 
 // UPnP rejects playlist links (error 714); HTTPS ones are left alone to spare a TLS session.
 String firstStreamIn(const String &url);

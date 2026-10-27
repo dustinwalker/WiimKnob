@@ -49,6 +49,7 @@ SemaphoreHandle_t mutex;
 QueueHandle_t commands;
 ListState lists[kListCount];
 Row *scratch = nullptr;
+Row started = {};
 volatile uint32_t versionCounter = 0;
 
 bool fetchJson(const String &query, JsonDocument &doc, const JsonDocument &filter) {
@@ -185,6 +186,9 @@ void play(const Row &row) {
     return;
   }
   wiim::task::requestStream(url, row.title, row.subtitle, row.image);
+  xSemaphoreTake(mutex, portMAX_DELAY);
+  started = row;
+  xSemaphoreGive(mutex);
 }
 
 void taskFn(void *) {
@@ -276,30 +280,49 @@ String parentTitle(List which) {
 
 uint32_t version() { return versionCounter; }
 
-int toggleFavorite(List which, int index) {
-  if (!mutex) return -1;
-  xSemaphoreTake(mutex, portMAX_DELAY);
-  const ListState &from = lists[(int)which];
+// Called with the mutex held.
+int toggleLocked(Row row) {
   ListState &favs = lists[(int)List::kFavorites];
-  int result = -1;
-  if (index >= 0 && index < from.count && from.rows[index].station) {
-    Row row = from.rows[index];
-    int at = findFavorite(row.target);
-    if (at >= 0) {
-      memmove(&favs.rows[at], &favs.rows[at + 1], (favs.count - at - 1) * sizeof(Row));
-      favs.count--;
-      result = 0;
-    } else if (favs.count < kMaxFavorites) {
-      row.subtitle[0] = 0; // Local's subtext is the show on air when starred, stale by tomorrow
-      favs.rows[favs.count++] = row;
-      result = 1;
-    }
+  int at = findFavorite(row.target);
+  if (at >= 0) {
+    memmove(&favs.rows[at], &favs.rows[at + 1], (favs.count - at - 1) * sizeof(Row));
+    favs.count--;
+    return 0;
   }
+  if (favs.count >= kMaxFavorites) return -1;
+  row.subtitle[0] = 0; // Local's subtext is the show on air when starred, stale by tomorrow
+  favs.rows[favs.count++] = row;
+  return 1;
+}
+
+int finishToggle(int result) {
   xSemaphoreGive(mutex);
   if (result < 0) return result;
   versionCounter++;
   saveFavorites();
   return result;
+}
+
+int toggleFavorite(List which, int index) {
+  if (!mutex) return -1;
+  xSemaphoreTake(mutex, portMAX_DELAY);
+  const ListState &from = lists[(int)which];
+  bool valid = index >= 0 && index < from.count && from.rows[index].station;
+  return finishToggle(valid ? toggleLocked(from.rows[index]) : -1);
+}
+
+int toggleFavorite(const Row &station) {
+  if (!mutex || !station.station || !station.target[0]) return -1;
+  xSemaphoreTake(mutex, portMAX_DELAY);
+  return finishToggle(toggleLocked(station));
+}
+
+bool startedStation(Row &out) {
+  if (!mutex) return false;
+  xSemaphoreTake(mutex, portMAX_DELAY);
+  out = started;
+  xSemaphoreGive(mutex);
+  return out.station && out.target[0];
 }
 
 bool isFavorite(const char *guideId) {
