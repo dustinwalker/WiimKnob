@@ -50,7 +50,7 @@ the button for setting up Wi-Fi again.
   Double-tapping the dark screen plays or pauses without waking it. On USB power it stays awake.
 - It learns its own battery. One calibration run from full to empty replaces the generic LiPo
   curve and sets the low-battery cutoff.
-- You can update it over Wi-Fi, and `http://wiimknob.local/status` shows Wi-Fi, memory,
+- You can update it over Wi-Fi, and `http://wiimknob-a2a8.local/status` shows Wi-Fi, memory,
   battery, the learned curve and a boot log.
 - Track names draw in most of the world's scripts: accented Latin, Vietnamese, Cyrillic, Greek,
   Chinese, Japanese and Korean. The stock LVGL fonts only cover plain ASCII.
@@ -182,11 +182,16 @@ use the phone. The knob only uses them until something gets saved through setup.
 
 ## Updating over Wi-Fi
 
-After the first USB flash, update over the air while the knob is awake or plugged in:
+After the first USB flash, update over the air while the knob is awake or plugged in. Each knob
+answers to `wiimknob-` plus the last four hex digits of its MAC, shown at the bottom of its
+Network page, so two knobs on one network don't collide. Name the one to flash:
 
 ```bash
-pio run -e esp32-s3-knob-ota -t upload
+WIIMKNOB_HOST=a2a8 pio run -e esp32-s3-knob-ota -t upload
 ```
+
+`WIIMKNOB_HOST` also takes the full name or an IP address. Firmware before v1.3.1 answers to
+plain `wiimknob.local`, so flash those once by IP.
 
 Anything on your LAN can flash the knob while it's awake. To stop that, set `OTA_PASSWORD` in
 `Config.h` and pass it at upload time. `platformio.ini` has the details.
