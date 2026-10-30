@@ -2,6 +2,7 @@
 #include "Config.h"
 
 #include <Preferences.h>
+#include <esp_mac.h>
 
 namespace net {
 
@@ -45,6 +46,16 @@ bool takeSetupRequest() {
   if (requested) prefs.remove("setup");
   prefs.end();
   return requested;
+}
+
+const char *hostname() {
+  static char name[16];
+  if (!name[0]) {
+    uint8_t mac[6];
+    esp_read_mac(mac, ESP_MAC_WIFI_STA);
+    snprintf(name, sizeof(name), "wiimknob-%02x%02x", mac[4], mac[5]);
+  }
+  return name;
 }
 
 } // namespace net

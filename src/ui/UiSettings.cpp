@@ -1,5 +1,6 @@
 #include "UiInternal.h"
 #include "FwVersion.h"
+#include "net/NetConfig.h"
 
 // The Settings and Network pages, and the full-screen Wi-Fi setup screen.
 namespace ui {
@@ -120,7 +121,7 @@ void detail::buildSettingsScreens() {
   lv_obj_t *version = lv_label_create(net);
   lv_obj_set_style_text_font(version, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_color(version, lv_color_hex(0x707070), 0);
-  lv_label_set_text(version, FW_VERSION);
+  lv_label_set_text_fmt(version, "%s   %s", net::hostname(), FW_VERSION);
   lv_obj_align(version, LV_ALIGN_CENTER, 0, 116);
 
   makePageDots(net, kNetwork);

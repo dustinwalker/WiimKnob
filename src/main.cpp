@@ -374,9 +374,10 @@ void serviceScreenOffTouch() {
 bool onExternalPower = false;
 
 // Over-the-air updates: `pio run -e esp32-s3-knob-ota -t upload` sends a new build to
-// wiimknob.local over Wi-Fi. The knob has to be awake (not in deep sleep) to receive it.
+// wiimknob-xxxx.local (see net::hostname) over Wi-Fi. The knob has to be awake (not in deep
+// sleep) to receive it.
 void beginOta() {
-  ArduinoOTA.setHostname("wiimknob");
+  ArduinoOTA.setHostname(net::hostname());
 #ifdef OTA_PASSWORD
   ArduinoOTA.setPassword(OTA_PASSWORD);
 #endif
@@ -398,7 +399,7 @@ void beginOta() {
   ArduinoOTA.begin();
 }
 
-// Read-only diagnostics at http://wiimknob.local/status, for checking on the knob without a
+// Read-only diagnostics at http://wiimknob-xxxx.local/status, for checking on the knob without a
 // USB cable (its serial log is only reachable over USB).
 WebServer statusServer(80);
 power::battery::Reading lastBattery;
@@ -513,7 +514,7 @@ void beginStatusServer() {
     const power::BootInfo &boot = power::lastBoot();
     char body[900];
     snprintf(body, sizeof(body),
-             "{\"firmware\":\"%s\",\"voltage\":%.3f,\"percent\":%d,\"usb_power\":%s,\"uptime_s\":%lu,"
+             "{\"firmware\":\"%s\",\"hostname\":\"%s\",\"voltage\":%.3f,\"percent\":%d,\"usb_power\":%s,\"uptime_s\":%lu,"
              "\"heap_internal\":%u,\"heap_internal_min\":%u,\"heap_internal_largest\":%u,"
              "\"rssi\":%d,\"meta_ok\":%u,\"meta_failures\":%u,\"art_failures\":%u,"
              "\"meta_age_s\":%lu,\"cpu_mhz\":%lu,\"screen_on\":%s,"
@@ -521,7 +522,7 @@ void beginStatusServer() {
              "\"sleep_voltage\":%.3f,\"sleep_reason\":\"%s\"},"
              "\"battery_cal\":{\"running\":%s,\"minutes\":%lu,\"learned_curve\":%s,"
              "\"learned_run_min\":%lu}}\n",
-             FW_VERSION, lastBattery.voltage, lastBattery.percent, lastBattery.externalPower ? "true" : "false",
+             FW_VERSION, net::hostname(), lastBattery.voltage, lastBattery.percent, lastBattery.externalPower ? "true" : "false",
              millis() / 1000, (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
              (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
              (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL), WiFi.RSSI(), d.metaOk,
@@ -552,6 +553,7 @@ RTC_DATA_ATTR int32_t rtcChannel = 0;
 constexpr uint32_t kFastJoinMs = 6000;
 
 bool connectWiFi(uint32_t timeoutMs) {
+  WiFi.setHostname(net::hostname());
   WiFi.mode(WIFI_STA);
   // Strongest AP rather than the first heard: with a mesh at weak RSSI it can be 10dB+ better.
   WiFi.setScanMethod(WIFI_ALL_CHANNEL_SCAN);

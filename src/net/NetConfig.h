@@ -22,4 +22,8 @@ void requestSetup();
 // Reads and clears that request.
 bool takeSetupRequest();
 
+// "wiimknob-a2a8", from the last two bytes of the Wi-Fi MAC, so two knobs on one LAN don't
+// both answer to the same .local name.
+const char *hostname();
+
 } // namespace net
