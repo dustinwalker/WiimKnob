@@ -1,5 +1,6 @@
 #include "Roon.h"
 #include "WsClient.h"
+#include "net/NetConfig.h"
 #include "wiim/RecentAlbums.h"
 
 #include <ArduinoJson.h>
@@ -807,7 +808,7 @@ void begin(const String &deviceName) {
   char suffix[8];
   snprintf(suffix, sizeof(suffix), "%02x%02x%02x", mac[3], mac[4], mac[5]);
   extensionId = String("com.wiimknob.knob.") + suffix;
-  displayName = "WiimKnob (" + deviceName + ")";
+  displayName = String("WiimKnob ") + (net::hostname() + 9) + " (" + deviceName + ")"; // two knobs can share a WiiM
 
   mutex = xSemaphoreCreateMutex();
   commands = xQueueCreate(8, sizeof(Command));
