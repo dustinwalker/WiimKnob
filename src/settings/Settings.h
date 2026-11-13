@@ -14,6 +14,12 @@ int value(Item item); // percent, seconds, seconds, minutes, 0/1
 const char *label(Item item);
 bool isToggle(Item item); // on/off: a tap flips it
 void format(Item item, char *buf, size_t len);
+void formatValue(Item item, int value, char *buf, size_t len);
+
+// The fixed list each item steps through, for the web page. key is its NVS key.
+const char *key(Item item);
+int optionCount(Item item);
+int option(Item item, int i);
 
 // Moves item delta steps through its list (clamped). Returns whether the value changed.
 bool step(Item item, int delta);

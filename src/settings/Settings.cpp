@@ -68,8 +68,15 @@ const char *label(Item item) { return kSpecs[item].label; }
 
 bool isToggle(Item item) { return kSpecs[item].options == kOnOffOpts; }
 
-void format(Item item, char *buf, size_t len) {
-  int v = value(item);
+const char *key(Item item) { return kSpecs[item].key; }
+
+int optionCount(Item item) { return kSpecs[item].count; }
+
+int option(Item item, int i) { return kSpecs[item].options[i]; }
+
+void format(Item item, char *buf, size_t len) { formatValue(item, value(item), buf, len); }
+
+void formatValue(Item item, int v, char *buf, size_t len) {
   switch (item) {
   case kBrightness:
     snprintf(buf, len, "%d%%", v);
