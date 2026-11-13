@@ -1,7 +1,9 @@
 #include "Web.h"
 
+#include <algorithm>
 #include <ArduinoJson.h>
 #include <ESPmDNS.h>
+#include <HTTPClient.h>
 #include <WiFi.h>
 #include <mdns.h>
 
@@ -17,11 +19,20 @@ namespace {
 String wiimLabel;
 void (*apply)(settings::Item) = nullptr;
 
-SemaphoreHandle_t peersMutex;
-String peersJson = "[]";
-uint32_t peersAtMs = 0;
+struct Device {
+  String name, label, ip;
+  uint32_t seenMs;
+};
+std::vector<Device> seen; // only discoverTask touches it, and only one runs at a time
+SemaphoreHandle_t devicesMutex; // guards devicesJson and askers
+String devicesJson = "[]";
+std::vector<String> askers; // IPs that fetched our list: the other boards, found without multicast
+uint32_t devicesAtMs = 0;
 volatile bool discovering = false;
-constexpr uint32_t kPeersMaxAgeMs = 60000;
+volatile size_t seenCount = 0; // seen's size for loop(), which can't read the vector mid-update
+constexpr uint32_t kDevicesMaxAgeMs = 60000;
+constexpr uint32_t kDevicesRetryMs = 10000;
+constexpr uint32_t kDeviceForgetMs = 10 * 60000; // Wi-Fi drops multicast, so one query rarely hears every board
 
 const char kPage[] PROGMEM = R"HTML(<!doctype html>
 <html lang="en">
@@ -57,24 +68,20 @@ const char kPage[] PROGMEM = R"HTML(<!doctype html>
   dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0; font-size: 14px; }
   dt { color: var(--muted); }
   dd { margin: 0; overflow-wrap: anywhere; }
-  .knobs { list-style: none; margin: 0; padding: 0; }
-  .knobs li + li { margin-top: 8px; }
-  .knobs a { display: flex; justify-content: space-between; gap: 12px; padding: 10px; border: 1px solid var(--line);
-             border-radius: 2px; color: var(--fg); text-decoration: none; }
-  .knobs a:hover { border-color: var(--arrow); }
-  .knobs a.self { border-color: var(--accent); }
-  .knobs .meta { color: var(--muted); font-size: 14px; }
+  nav { display: flex; justify-content: center; gap: 4px; overflow-x: auto; margin: -16px -16px 24px; padding: 0 16px;
+        border-bottom: 1px solid var(--line); scrollbar-width: none; }
+  nav[hidden] { display: none; }
+  nav a { flex: none; padding: 12px 14px 10px; color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 600;
+          border-bottom: 2px solid transparent; white-space: nowrap; }
+  nav a:hover { color: var(--fg); }
+  nav a[aria-current] { color: var(--fg); border-bottom-color: var(--arrow); }
 </style>
 </head>
 <body>
 <main>
+  <nav id="devices" aria-label="Devices" hidden></nav>
   <h1>WiimKnob</h1>
   <p class="sub" id="status">Loading…</p>
-
-  <section id="knobsCard" hidden>
-    <h2>Devices</h2>
-    <ul class="knobs" id="knobs"></ul>
-  </section>
 
   <section>
     <h2>Now playing</h2>
@@ -131,7 +138,7 @@ const $ = id => document.getElementById(id);
 const GROUP = { bright: "screen", ctrl: "screen", screen: "screen", sleep: "screen", recent: "pages", tunein: "pages", batcal: "battery" };
 const HINT = { sleep: "On battery the knob, and this page, go to sleep after this long untouched. On USB it stays awake.",
                batcal: "Keeps the screen on and logs the discharge to learn this battery's curve. Run it from a full charge." };
-let editing = false, built = false, lastArt = "", self = "", knobTries = 0;
+let editing = false, built = false, lastArt = "", deviceTries = 0;
 
 function uptime(s) {
   const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
@@ -185,7 +192,6 @@ function build(settings) {
 async function refresh() {
   let s;
   try { s = await (await fetch("/api/state")).json(); } catch { $("status").textContent = "Knob not responding (asleep?)"; return; }
-  self = s.name;
   document.title = "WiimKnob " + s.name.slice(9);
   $("status").textContent = s.wiim + " · " + s.name;
   $("wiim").textContent = s.wiim;
@@ -226,47 +232,81 @@ async function refreshDevice() {
     : $("zone").value === "0" ? (r.wiim_zone ? "Automatic is following " + r.wiim_zone + "." : "Automatic learns the zone from what the WiiM plays.") : "";
 }
 
-async function refreshKnobs() {
-  let k;
-  try { k = await (await fetch("/api/knobs")).json(); } catch { return; }
-  if (k.length < 2) { if (++knobTries < 4) setTimeout(refreshKnobs, 3000); return; }
-  $("knobsCard").hidden = false;
-  $("knobs").innerHTML = "";
-  const rank = n => n.name === self ? 0 : n.name.startsWith("wiimknob-") ? 1 : 2;
-  k.sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
-  for (const n of k) {
-    const li = document.createElement("li");
+async function refreshDevices() {
+  let list;
+  try { list = await (await fetch("/api/devices")).json(); } catch { return; }
+  if (list.length < 2) { if (++deviceTries < 4) setTimeout(refreshDevices, 3000); return; }
+  const rank = d => d.self ? 0 : d.name.startsWith("wiimknob-") ? 1 : 2;
+  list.sort((a, b) => rank(a) - rank(b) || a.label.localeCompare(b.label));
+  $("devices").replaceChildren(...list.map(d => {
     const a = document.createElement("a");
-    a.href = "http://" + n.ip + "/";
-    if (n.name === self) a.className = "self";
-    a.innerHTML = `<span></span><span class="meta"></span>`;
-    a.children[0].textContent = n.wiim || n.name;
-    a.children[1].textContent = n.name === self ? "this knob" : n.name;
-    li.append(a);
-    $("knobs").append(li);
-  }
+    a.textContent = d.label || d.name;
+    a.title = d.name;
+    a.href = d.self ? "/" : "http://" + d.ip + "/";
+    if (d.self) a.setAttribute("aria-current", "page");
+    return a;
+  }));
+  $("devices").hidden = false;
 }
 
 guard($("zone"));
 $("zone").addEventListener("change", e => { editing = false; save({ zone: +e.target.value }); });
 
-refresh().then(() => { refreshDevice(); refreshKnobs(); });
+refresh().then(refreshDevice);
+refreshDevices();
 setInterval(refresh, 3000);
 setInterval(refreshDevice, 15000);
-setInterval(refreshKnobs, 30000);
+setInterval(refreshDevices, 30000);
 </script>
 </body>
 </html>
 )HTML";
 
+void upsert(const String &name, const String &label, const String &ip, uint32_t now) {
+  auto it = std::find_if(seen.begin(), seen.end(), [&](const Device &d) { return d.name == name; });
+  if (it == seen.end()) {
+    seen.push_back({name, label, ip, now});
+    return;
+  }
+  it->ip = ip;
+  if (label.length()) it->label = label;
+  it->seenMs = now;
+}
+
+// Each board's own list fills in what multicast missed; an entry only counts once that board answers itself.
+void askPeers(uint32_t now) {
+  std::vector<String> queue, asked;
+  xSemaphoreTake(devicesMutex, portMAX_DELAY);
+  queue.swap(askers);
+  xSemaphoreGive(devicesMutex);
+  for (const Device &d : seen) queue.push_back(d.ip);
+  while (!queue.empty() && asked.size() < 8) {
+    String ip = queue.back();
+    queue.pop_back();
+    if (std::find(asked.begin(), asked.end(), ip) != asked.end()) continue;
+    asked.push_back(ip);
+    NetworkClient client;
+    HTTPClient http;
+    http.setConnectTimeout(1500);
+    http.setTimeout(1500);
+    if (!http.begin(client, "http://" + ip + "/api/devices")) continue;
+    JsonDocument doc;
+    if (http.GET() == HTTP_CODE_OK && !deserializeJson(doc, http.getString())) {
+      for (JsonObject o : doc.as<JsonArray>()) {
+        String name = o["name"] | "";
+        String theirIp = o["ip"] | "";
+        if (!name.length() || name == net::hostname()) continue;
+        if (o["self"] | false) upsert(name, o["label"] | "", ip, now);
+        else queue.push_back(theirIp);
+      }
+    }
+    http.end();
+  }
+}
+
 void discoverTask(void *) {
   mdns_result_t *results = nullptr;
-  JsonDocument doc;
-  JsonArray list = doc.to<JsonArray>();
-  JsonObject me = list.add<JsonObject>();
-  me["name"] = net::hostname();
-  me["wiim"] = wiimLabel;
-  me["ip"] = WiFi.localIP().toString();
+  uint32_t now = millis();
   if (mdns_query_ptr("_arduino", "_tcp", 2000, 16, &results) == ESP_OK) {
     for (mdns_result_t *r = results; r; r = r->next) {
       if (!r->hostname || !r->addr || !strcmp(r->hostname, net::hostname())) continue;
@@ -277,38 +317,54 @@ void discoverTask(void *) {
       if (!a) continue;
       char ip[16];
       snprintf(ip, sizeof(ip), IPSTR, IP2STR(&a->addr.u_addr.ip4));
-      bool dup = false;
-      for (JsonObject o : list) dup |= o["name"] == r->hostname; // one answer per interface
-      if (dup) continue;
-      JsonObject o = list.add<JsonObject>();
-      o["name"] = r->hostname;
-      o["ip"] = ip;
-      o["wiim"] = knob ? "" : "Roon Visualizer";
+      String label = knob ? "" : "Roon Visualizer";
       for (size_t i = 0; i < r->txt_count; i++) {
-        if (!strcmp(r->txt[i].key, "wiim") && r->txt[i].value) o["wiim"] = r->txt[i].value;
+        if (!strcmp(r->txt[i].key, "wiim") && r->txt[i].value) label = r->txt[i].value;
       }
+      upsert(r->hostname, label, ip, now);
     }
     mdns_query_results_free(results);
   }
+  askPeers(now);
+  seen.erase(std::remove_if(seen.begin(), seen.end(), [&](const Device &d) { return now - d.seenMs > kDeviceForgetMs; }),
+             seen.end());
+
+  JsonDocument doc;
+  JsonArray list = doc.to<JsonArray>();
+  JsonObject me = list.add<JsonObject>();
+  me["name"] = net::hostname();
+  me["label"] = wiimLabel;
+  me["ip"] = WiFi.localIP().toString();
+  me["self"] = true;
+  for (const Device &d : seen) {
+    JsonObject o = list.add<JsonObject>();
+    o["name"] = d.name;
+    o["label"] = d.label;
+    o["ip"] = d.ip;
+  }
   String json;
   serializeJson(doc, json);
-  xSemaphoreTake(peersMutex, portMAX_DELAY);
-  peersJson = json;
-  xSemaphoreGive(peersMutex);
-  peersAtMs = millis() | 1;
+  xSemaphoreTake(devicesMutex, portMAX_DELAY);
+  devicesJson = json;
+  xSemaphoreGive(devicesMutex);
+  seenCount = seen.size();
+  devicesAtMs = millis() | 1;
   discovering = false;
   vTaskDelete(nullptr);
 }
 
-void handleKnobs() {
+void handleDevices() {
   // The query blocks for its whole timeout, so it runs off loop() and the page gets the last answer.
-  if (!discovering && (!peersAtMs || millis() - peersAtMs > kPeersMaxAgeMs)) {
+  uint32_t maxAge = !seenCount ? kDevicesRetryMs : kDevicesMaxAgeMs;
+  if (!discovering && (!devicesAtMs || millis() - devicesAtMs > maxAge)) {
     discovering = true;
-    if (xTaskCreate(discoverTask, "mdns-peers", 6144, nullptr, 1, nullptr) != pdPASS) discovering = false;
+    if (xTaskCreate(discoverTask, "mdns-devices", 8192, nullptr, 1, nullptr) != pdPASS) discovering = false;
   }
-  xSemaphoreTake(peersMutex, portMAX_DELAY);
-  String json = peersJson;
-  xSemaphoreGive(peersMutex);
+  String from = server().client().remoteIP().toString();
+  xSemaphoreTake(devicesMutex, portMAX_DELAY);
+  String json = devicesJson;
+  if (askers.size() < 8 && std::find(askers.begin(), askers.end(), from) == askers.end()) askers.push_back(from);
+  xSemaphoreGive(devicesMutex);
   server().send(200, "application/json", json);
 }
 
@@ -394,12 +450,12 @@ WebServer &server() {
 void begin(const String &wiimName, void (*applySetting)(settings::Item)) {
   wiimLabel = wiimName;
   apply = applySetting;
-  peersMutex = xSemaphoreCreateMutex();
+  devicesMutex = xSemaphoreCreateMutex();
   MDNS.addServiceTxt("arduino", "tcp", "wiim", wiimName.c_str()); // ArduinoOTA's service, so other knobs can label this one
   server().on("/", HTTP_GET, [] { server().send_P(200, "text/html", kPage); });
   server().on("/api/state", HTTP_GET, handleState);
   server().on("/api/settings", HTTP_POST, handleSettings);
-  server().on("/api/knobs", HTTP_GET, handleKnobs);
+  server().on("/api/devices", HTTP_GET, handleDevices);
   server().begin();
 }
 
