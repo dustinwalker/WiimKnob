@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include <vector>
 
 // Track info and covers from a Roon Core when it's the WiiM's source; volume stays with the WiiM.
 namespace roon {
@@ -48,6 +49,9 @@ String imageUrl(const String &imageKey, int size);
 // The Settings row: "Automatic" learns the zone from the WiiM's title; a named zone pins it.
 String zoneChoiceLabel();
 void stepZoneChoice(int delta);
+// The same choices as a list, for the web page: "Automatic" first, then zones by name.
+std::vector<String> zoneChoices(int &current);
+void setZoneChoice(int choice);
 
 // Bumped on every track or cover change in any zone.
 uint32_t version();

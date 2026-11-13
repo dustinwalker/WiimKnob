@@ -886,17 +886,36 @@ String zoneChoiceLabel() {
   return name;
 }
 
-void stepZoneChoice(int delta) {
-  if (!mutex) return;
-  xSemaphoreTake(mutex, portMAX_DELAY);
+namespace {
+// Call with the mutex held.
+std::vector<const Zone *> zonesByName(int &current) {
   std::vector<const Zone *> sorted;
   for (const Zone &z : zones) sorted.push_back(&z);
   std::sort(sorted.begin(), sorted.end(), [](const Zone *a, const Zone *b) { return a->name < b->name; });
-  int current = 0;
+  current = 0;
   for (size_t i = 0; i < sorted.size(); i++) {
     if (hasOutput(*sorted[i], pinnedOutput)) current = i + 1;
   }
-  int next = constrain(current + delta, 0, (int)sorted.size());
+  return sorted;
+}
+} // namespace
+
+std::vector<String> zoneChoices(int &current) {
+  std::vector<String> names{"Automatic"};
+  current = 0;
+  if (!mutex) return names;
+  xSemaphoreTake(mutex, portMAX_DELAY);
+  for (const Zone *z : zonesByName(current)) names.push_back(z->name);
+  xSemaphoreGive(mutex);
+  return names;
+}
+
+void setZoneChoice(int choice) {
+  if (!mutex) return;
+  xSemaphoreTake(mutex, portMAX_DELAY);
+  int current;
+  std::vector<const Zone *> sorted = zonesByName(current);
+  int next = constrain(choice, 0, (int)sorted.size());
   if (next == current) {
     xSemaphoreGive(mutex);
     return;
@@ -910,6 +929,12 @@ void stepZoneChoice(int delta) {
   saveString("pinname", pinnedName);
   if (pinnedOutput.length()) saveString("output", pinnedOutput);
   versionCounter++; // re-check the source against the new zone
+}
+
+void stepZoneChoice(int delta) {
+  int current;
+  zoneChoices(current);
+  setZoneChoice(current + delta);
 }
 
 String imageUrl(const String &imageKey, int size) {
