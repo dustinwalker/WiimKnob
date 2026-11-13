@@ -52,6 +52,10 @@ the button for setting up Wi-Fi again.
   curve and sets the low-battery cutoff.
 - You can update it over Wi-Fi, and `http://wiimknob-a2a8.local/status` shows Wi-Fi, memory,
   battery, the learned curve and a boot log.
+- `http://wiimknob-a2a8.local/` is a settings page: brightness, timeouts, pages, the Roon zone and
+  battery calibration, plus what's playing. It links to the other knobs and the Roon Visualizer
+  on the network. It's only up while the knob is awake, so on battery it goes away with the
+  Sleep timeout.
 - Track names draw in most of the world's scripts: accented Latin, Vietnamese, Cyrillic, Greek,
   Chinese, Japanese and Korean. The stock LVGL fonts only cover plain ASCII.
 
@@ -484,7 +488,7 @@ include/
   Config.h.example  defaults and optional Wi-Fi/WiiM fallback (copy to Config.h)
   lv_conf.h         LVGL configuration
 src/
-  main.cpp          setup/loop: Wi-Fi, polling, input wiring, OTA, the /status page
+  main.cpp          setup/loop: Wi-Fi, polling, input wiring, OTA, the /status debug routes
   display/          QSPI bus + ST77916 panel bring-up, DMA flush task, PWM backlight
   haptics/          DRV2605L haptic feedback
   input/            knob (pulse decoding) and touch (CST816D) drivers
@@ -495,6 +499,7 @@ src/
                     and the recently played history
   roon/             Roon discovery, WebSocket and MOO client, history, browse and playback,
                     and the small-cover cache
+  web/              the settings page at / and its JSON API
   ui/               the LVGL pages and gesture navigation (UiSettings.cpp: settings,
                     network and setup screens; UiLibrary.cpp: the Library page)
     fonts/            generated fonts for most scripts, plus icon fonts

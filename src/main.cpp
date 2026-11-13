@@ -2,7 +2,6 @@
 #include <ArduinoJson.h>
 #include <ArduinoOTA.h>
 #include <HTTPClient.h>
-#include <WebServer.h>
 #include <WiFi.h>
 #include <esp_task_wdt.h>
 #include <lvgl.h>
@@ -23,6 +22,7 @@
 #include "settings/Settings.h"
 #include "tunein/TuneIn.h"
 #include "ui/Ui.h"
+#include "web/Web.h"
 #include "wiim/AlbumArt.h"
 #include "wiim/WiimTask.h"
 
@@ -401,7 +401,7 @@ void beginOta() {
 
 // Read-only diagnostics at http://wiimknob-xxxx.local/status, for checking on the knob without a
 // USB cable (its serial log is only reachable over USB).
-WebServer statusServer(80);
+WebServer &statusServer = web::server();
 power::battery::Reading lastBattery;
 
 bool fetchTuneIn(const String &query, JsonDocument &doc) {
@@ -542,7 +542,6 @@ void beginStatusServer() {
     json += ",\"boot_log\":" + power::bootLogJson() + "}\n";
     statusServer.send(200, "application/json", json);
   });
-  statusServer.begin();
 }
 
 net::Config netConfig;
@@ -1010,6 +1009,7 @@ void setup() {
   configTime(0, 0, "pool.ntp.org", "time.google.com"); // wall clock for the boot log; kept through deep sleep
   beginOta();
   beginStatusServer();
+  web::begin(netConfig.wiimName.length() ? netConfig.wiimName : netConfig.wiimHost, applySetting);
 
   wiim::task::begin(netConfig.wiimHost);
   roon::begin(netConfig.wiimName.length() ? netConfig.wiimName : netConfig.wiimHost);
@@ -1056,7 +1056,7 @@ void loop() {
   settings::service();
   serviceNetworkInfo();
   ArduinoOTA.handle();
-  statusServer.handleClient();
+  web::service();
 
   // Dark, nothing renders: 20ms still catches a tap (the double-tap window is 350ms) at a
   // quarter of the touch reads and wakeups.
