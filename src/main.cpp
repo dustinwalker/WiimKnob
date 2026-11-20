@@ -234,6 +234,9 @@ void applySetting(settings::Item item) {
   case settings::kSleepTimeout:
     power::setSleepTimeout(v);
     break;
+  case settings::kUsbScreenTimeout:
+    power::setUsbScreenTimeout(v);
+    break;
   case settings::kBatteryCal:
     power::batcal::setEnabled(v);
     power::setStayAwake(v);

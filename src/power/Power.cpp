@@ -18,6 +18,7 @@ uint32_t lastActivityMs = 0;
 bool screenOn = true;
 uint32_t screenTimeoutMs = (uint32_t)SCREEN_TIMEOUT_S * 1000;
 uint32_t sleepTimeoutMs = (uint32_t)DEEP_SLEEP_TIMEOUT_MIN * 60000UL;
+uint32_t usbScreenTimeoutMs = 0;
 bool externalPower = false;
 bool stayAwake = false;
 bool dimmed = false;
@@ -204,6 +205,12 @@ void noteActivity() {
   }
 }
 
+void turnScreenOff() {
+  display::setBacklightOn(false);
+  screenOn = false;
+  if (screenCallback) screenCallback(false);
+}
+
 void service() {
   if (stayAwake) return;
   uint32_t idleMs = millis() - lastActivityMs;
@@ -214,13 +221,12 @@ void service() {
     display::setDimmed(true);
     dimmed = true;
   }
-  if (externalPower) return;
-
-  if (screenOn && idleMs > screenTimeoutMs) {
-    display::setBacklightOn(false);
-    screenOn = false;
-    if (screenCallback) screenCallback(false);
+  if (externalPower) {
+    if (screenOn && usbScreenTimeoutMs && idleMs > usbScreenTimeoutMs) turnScreenOff();
+    return;
   }
+
+  if (screenOn && idleMs > screenTimeoutMs) turnScreenOff();
 
   if (idleMs > sleepTimeoutMs) {
     enterDeepSleep("Idle timeout reached");
@@ -236,6 +242,8 @@ void setScreenCallback(void (*cb)(bool on)) { screenCallback = cb; }
 void setScreenTimeout(uint32_t seconds) { screenTimeoutMs = seconds * 1000; }
 
 void setSleepTimeout(uint32_t minutes) { sleepTimeoutMs = minutes * 60000UL; }
+
+void setUsbScreenTimeout(uint32_t minutes) { usbScreenTimeoutMs = minutes * 60000UL; }
 
 void setStayAwake(bool on) {
   stayAwake = on;

@@ -10,7 +10,7 @@ using namespace detail;
 namespace {
 
 // Settings.
-constexpr int kMaxSettings = 8;
+constexpr int kMaxSettings = 9;
 lv_obj_t *settingsList = nullptr;
 lv_obj_t *settingRows[kMaxSettings] = {};
 lv_obj_t *settingValues[kMaxSettings] = {};

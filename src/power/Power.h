@@ -44,8 +44,9 @@ void service();
 void setScreenTimeout(uint32_t seconds);
 void setSleepTimeout(uint32_t minutes);
 
-// On USB power the board stays awake and the screen dims instead of turning off; the timeouts
-// resume from the moment it's unplugged.
+// On USB power the board stays awake and the screen dims, turning off only after the USB screen
+// timeout (0: never); the battery timeouts resume from the moment it's unplugged.
+void setUsbScreenTimeout(uint32_t minutes);
 void setExternalPower(bool on);
 
 // Holds the screen on, undimmed, with no sleep (battery calibration needs a steady load).
