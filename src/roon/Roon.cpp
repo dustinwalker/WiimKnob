@@ -44,7 +44,7 @@ struct SpiRamAllocator : ArduinoJson::Allocator {
 } spiRam;
 
 struct Command {
-  enum Kind : uint8_t { kPlay, kControl, kRefresh, kShuffle, kRepeat } kind;
+  enum Kind : uint8_t { kPlay, kControl, kRefresh, kShuffle, kRepeat, kRadio } kind;
   uint8_t list;
   int16_t index;
   char control[12];
@@ -83,6 +83,7 @@ String queueZoneId;
 uint32_t nextSubscriptionKey = 1;
 uint32_t *queueItemIds = nullptr;
 volatile bool sourceMatched = false;
+volatile int8_t radioResult = -1; // -1 nothing new, 0 failed, 1 started
 
 Row *rows[kListCount] = {};
 int rowCount[kListCount] = {};
@@ -551,8 +552,9 @@ void refreshList(List which) {
   xSemaphoreGive(mutex);
 }
 
-// Playlists and tracks hide "Play Now" one or two action lists deep; a station plays on opening.
-bool playFrom(const char *hierarchy, String itemKey, const String &zoneId) {
+// Playlists and tracks hide their actions ("Play Now", "Start Radio") one or two action lists
+// deep; a station plays on opening.
+bool playFrom(const char *hierarchy, String itemKey, const String &zoneId, const char *actionTitle = "Play Now") {
   JsonDocument doc(&spiRam);
   for (int depth = 0; depth < 4; depth++) {
     if (!browse(hierarchy, itemKey.c_str(), nullptr, false, zoneId, doc)) return false;
@@ -562,7 +564,7 @@ bool playFrom(const char *hierarchy, String itemKey, const String &zoneId) {
     JsonArray items = doc["items"];
     String next;
     for (JsonObject item : items) {
-      if (strcmp(item["title"] | "", "Play Now") == 0) {
+      if (strcmp(item["title"] | "", actionTitle) == 0) {
         return browse(hierarchy, item["item_key"] | "", nullptr, false, zoneId, doc);
       }
     }
@@ -578,36 +580,65 @@ bool playFrom(const char *hierarchy, String itemKey, const String &zoneId) {
   return false;
 }
 
-String findTrack(JsonArray items, const char *title) {
+// Prefers a track by the same artist: a common title can have several versions in the results.
+String findTrack(JsonArray items, const char *title, const String &artist) {
+  String fallback;
   for (JsonObject item : items) {
-    if (strcmp(item["hint"] | "", "action_list") == 0 && strcasecmp(item["title"] | "", title) == 0) {
-      return item["item_key"] | "";
-    }
+    if (strcmp(item["hint"] | "", "action_list") != 0 || strcasecmp(item["title"] | "", title) != 0) continue;
+    String subtitle = item["subtitle"] | "";
+    if (artist.isEmpty() || subtitle.indexOf(artist) >= 0) return item["item_key"] | "";
+    if (fallback.isEmpty()) fallback = item["item_key"] | "";
   }
-  return "";
+  return fallback;
 }
 
-// Roon keeps no history the API can reach, so a past track is found again by search.
-bool playBySearch(const Row &row, const String &zoneId) {
+// Roon keeps no history the API can reach, and the browse API has no "now playing" item, so a
+// track is found again by searching for its title and main artist. Returns its item key in
+// the "search" hierarchy, or empty.
+String findBySearch(const Row &row, const String &zoneId) {
   JsonDocument doc(&spiRam);
   String artist = row.subtitle;
   int comma = artist.indexOf(',');
   if (comma > 0) artist = artist.substring(0, comma);
+  artist.trim();
   String query = String(row.title) + " " + artist;
-  if (!browse("search", nullptr, query.c_str(), true, zoneId, doc) || !load("search", doc)) return false;
-  String key = findTrack(doc["items"], row.title);
+  if (!browse("search", nullptr, query.c_str(), true, zoneId, doc) || !load("search", doc)) return "";
+  String key = findTrack(doc["items"], row.title, artist);
   if (key.isEmpty()) {
     for (JsonObject item : doc["items"].as<JsonArray>()) {
       if (strcmp(item["title"] | "", "Tracks") != 0) continue;
       JsonDocument tracks(&spiRam);
       String tracksKey = item["item_key"] | "";
       if (browse("search", tracksKey.c_str(), nullptr, false, zoneId, tracks) && load("search", tracks)) {
-        key = findTrack(tracks["items"], row.title);
+        key = findTrack(tracks["items"], row.title, artist);
       }
       break;
     }
   }
+  return key;
+}
+
+bool playBySearch(const Row &row, const String &zoneId) {
+  String key = findBySearch(row, zoneId);
   return key.length() && playFrom("search", key, zoneId);
+}
+
+// Roon Radio seeded with what's playing: the same track lookup as History, then the track's
+// "Start Radio" action instead of "Play Now". Roon queues similar music after the current track.
+void startRadio() {
+  Zone zone;
+  if (!sourceZone(zone) || zone.title.isEmpty()) {
+    Serial.println("[roon] radio: nothing from Roon is playing");
+    radioResult = 0;
+    return;
+  }
+  Row row = {};
+  copyField(row.title, sizeof(row.title), zone.title.c_str());
+  copyField(row.subtitle, sizeof(row.subtitle), zone.artist.c_str());
+  String key = findBySearch(row, zone.zoneId);
+  bool ok = key.length() && playFrom("search", key, zone.zoneId, "Start Radio");
+  Serial.printf("[roon] radio from '%s': %s\n", row.title, ok ? "ok" : "FAILED");
+  radioResult = ok ? 1 : 0;
 }
 
 void play(List which, int index) {
@@ -654,6 +685,9 @@ void runCommand(const Command &c) {
     }
     break;
   }
+  case Command::kRadio:
+    startRadio();
+    break;
   case Command::kRefresh:
     refreshList(List::kPlaylists);
     refreshList(List::kRadio);
@@ -1020,6 +1054,17 @@ void requestToggleShuffle() {
 void requestCycleRepeat() {
   Command c = {Command::kRepeat, 0, 0, ""};
   xQueueSend(commands, &c, 0);
+}
+
+void requestStartRadio() {
+  Command c = {Command::kRadio, 0, 0, ""};
+  xQueueSend(commands, &c, 0);
+}
+
+int takeRadioResult() {
+  int result = radioResult;
+  radioResult = -1;
+  return result;
 }
 
 void requestRefreshLists() {

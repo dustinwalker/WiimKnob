@@ -115,6 +115,13 @@ void onPlayPauseClicked(lv_event_t *e) {
   if (callbacks.onPlayPause) callbacks.onPlayPause();
 }
 
+// Held, play/pause starts Roon Radio from the track: it's the one button that's always there.
+void onPlayPauseHeld(lv_event_t *) {
+  lv_indev_t *indev = lv_indev_get_act();
+  if (indev && lv_indev_get_gesture_dir(indev) != LV_DIR_NONE) return;
+  if (callbacks.onPlayPauseHeld) callbacks.onPlayPauseHeld();
+}
+
 bool endedInGesture() {
   lv_indev_t *indev = lv_indev_get_act();
   return indev && lv_indev_get_gesture_dir(indev) != LV_DIR_NONE;
@@ -405,7 +412,7 @@ lv_obj_t *makeMediaButton(lv_obj_t *bar, int xOffset, int size, const char *symb
   lv_obj_align(hit, LV_ALIGN_CENTER, xOffset, 0);
   lv_obj_clear_flag(hit, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_flag(hit, LV_OBJ_FLAG_GESTURE_BUBBLE); // a swipe starting here still changes screens
-  lv_obj_add_event_cb(hit, cb, LV_EVENT_CLICKED, NULL);
+  if (cb) lv_obj_add_event_cb(hit, cb, LV_EVENT_CLICKED, NULL);
 
   lv_obj_t *icon = lv_label_create(hit);
   lv_label_set_text(icon, symbol);
@@ -836,7 +843,10 @@ void begin(const Callbacks &cbs) {
   lv_obj_add_flag(controlBar, LV_OBJ_FLAG_GESTURE_BUBBLE);
 
   makeMediaButton(controlBar, -88, 64, LV_SYMBOL_PREV, onPrevClicked, false);
-  makeMediaButton(controlBar, 0, 72, LV_SYMBOL_PLAY, onPlayPauseClicked, true, &playPauseIcon);
+  lv_obj_t *playPause = makeMediaButton(controlBar, 0, 72, LV_SYMBOL_PLAY, nullptr, true, &playPauseIcon);
+  // Short clicks only, so letting go after a hold doesn't also pause.
+  lv_obj_add_event_cb(playPause, onPlayPauseClicked, LV_EVENT_SHORT_CLICKED, NULL);
+  lv_obj_add_event_cb(playPause, onPlayPauseHeld, LV_EVENT_LONG_PRESSED, NULL);
   makeMediaButton(controlBar, 88, 64, LV_SYMBOL_NEXT, onNextClicked, false);
 
   makePageDots(ctrl, kNowPlaying);

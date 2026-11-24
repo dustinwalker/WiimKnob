@@ -21,6 +21,7 @@ struct Callbacks {
   void (*onShuffle)();
   void (*onRepeat)();
   void (*onArtHeld)();
+  void (*onPlayPauseHeld)(); // a tap still goes to onPlayPause
 };
 
 // Library page tabs, in order.

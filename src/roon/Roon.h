@@ -71,6 +71,10 @@ void requestControl(const char *control); // previous, next, playpause
 void requestToggleShuffle();
 void requestCycleRepeat(); // off, all, one
 void requestRefreshLists();
+// Starts Roon Radio from the WiiM zone's current track. takeRadioResult says how the last one
+// went, once: -1 nothing new, 0 failed, 1 started.
+void requestStartRadio();
+int takeRadioResult();
 
 String statusJson();
 

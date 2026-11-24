@@ -196,6 +196,25 @@ void syncStarred() {
   ui::setStarred(starred);
 }
 
+// Hold play/pause: Roon Radio from what's playing. Without Roon it's just a slow tap.
+void onPlayPauseHeld() {
+  if (!roonIsSource()) {
+    onPlayPause();
+    return;
+  }
+  roon::requestStartRadio();
+  haptics::buzz();
+  ui::showToast("Starting Roon Radio");
+}
+
+// The lookup takes a second or two in the Roon task; this reports how it went.
+void syncRadioResult(bool screenOn) {
+  int result = roon::takeRadioResult();
+  if (!screenOn) return; // stale by the time anyone looks
+  if (result == 1) ui::showToast("Radio is on");
+  else if (result == 0) ui::showToast("Couldn't start radio");
+}
+
 void onShuffle() {
   roon::requestToggleShuffle();
   haptics::buzz();
@@ -949,7 +968,7 @@ void setup() {
   display::begin();
 
   ui::Callbacks callbacks = {onPrev, onNext, onPlayPause, onPreset, onRecent, onSettingTapped, onWifiSetup,
-                                onLibraryItem, onLibraryTab, onLibraryHeld, onTuneInItem, onTuneInTab, onTuneInHeld, onShuffle, onRepeat, onArtHeld};
+                                onLibraryItem, onLibraryTab, onLibraryHeld, onTuneInItem, onTuneInTab, onTuneInHeld, onShuffle, onRepeat, onArtHeld, onPlayPauseHeld};
   ui::begin(callbacks);
 
   settings::begin();
@@ -1054,6 +1073,7 @@ void loop() {
   if (screenOn) syncLibrary();
   if (screenOn) syncTuneIn();
   if (screenOn) syncStarred();
+  syncRadioResult(screenOn);
   serviceBattery();
   power::service();
   settings::service();
