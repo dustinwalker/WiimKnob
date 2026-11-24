@@ -32,16 +32,34 @@ bouncing dots until the new one has downloaded, and the new cover fades in.
 
 ### Pages
 
-Tap the art to bring up the controls, then swipe sideways between Now playing, Library, Recently
-played, Presets, Settings and Network. Library appears once Roon has approved the knob, and
-Recently played stays hidden until you turn it on in Settings.
+Tap the art to bring up the controls, then swipe sideways between Now playing, Library, TuneIn,
+Recently played, Presets, Settings and Network. Library appears once Roon has approved the knob.
+TuneIn and Recently played stay hidden until you turn them on in Settings.
 
 On the Settings page you tap a row and turn the knob to change it, and tapping an on/off row
 flips it. It has brightness, how long the controls stay up, the screen-off and sleep timeouts,
-the Recently played page, battery calibration and the Roon zone. Everything saves to flash.
+when the screen turns off on USB power, the TuneIn and Recently played pages, battery
+calibration and the Roon zone. Everything saves to flash.
 
 The Network page shows the Wi-Fi name, IP address, signal and which WiiM it controls, and has
 the button for setting up Wi-Fi again.
+
+### Hold the art to star it
+
+Hold the album art on Now playing to star what's playing. A big star flashes, yellow when it's
+starred and gray when it's unstarred, and the knob buzzes. Hold again to unstar. While the
+controls are up, a small star sits between the volume and the title whenever the playing item
+is starred, so you can tell before you hold.
+
+- A Roon track goes to the starred tab on the Library page.
+- A station the knob started from the TuneIn page goes to TuneIn's Favorites.
+- Anything else, like a WiiM Home album, Spotify Connect, AirPlay or an input, shows "Can't
+  star this" with no buzz.
+
+If the list is full, you get "Favorites are full" instead.
+
+Roon's extension API can't set Roon's own favorites, so these live on the knob and don't show up
+in Roon's apps.
 
 ### Everything else
 
@@ -51,7 +69,8 @@ the button for setting up Wi-Fi again.
 - It learns its own battery. One calibration run from full to empty replaces the generic LiPo
   curve and sets the low-battery cutoff.
 - You can update it over Wi-Fi, and `http://wiimknob-a2a8.local/status` shows Wi-Fi, memory,
-  battery, the learned curve and a boot log.
+  battery, the learned curve and a boot log. `/tunein` and `/star` drive TuneIn and starring
+  from a terminal; see [Debug routes](#debug-routes).
 - `http://wiimknob-a2a8.local/` is a settings page: brightness, timeouts, pages, the Roon zone and
   battery calibration, plus what's playing. It links to the other knobs and the Roon Visualizer
   on the network. It's only up while the knob is awake, so on battery it goes away with the
@@ -76,8 +95,12 @@ While Roon is the WiiM's source:
   Repeat cycles off, all and one, and shows a small 1 for one.
 - Volume still goes straight to the WiiM, whatever's playing.
 
-The Library page has four tabs:
+The Library page has five tabs. From left to right:
 
+- **★ (starred)** lists the tracks you starred by holding the art, in the order you starred
+  them, up to 50. It
+  plays them the same way History does, by searching Roon's library for the title and artist.
+  Hold a row to unstar it.
 - **History** lists every track that played on the WiiM's zone while the knob was connected,
   newest first, with small covers. Roon's API has no history of its own, so the knob keeps this
   list in flash, up to 100 tracks. Tapping one finds the track again through Roon's library
@@ -86,6 +109,9 @@ The Library page has four tabs:
   to it.
 - **Playlists** lists your Roon playlists. Tapping one plays it.
 - **Radio** lists the stations in My Live Radio. Tapping one plays it.
+
+The starred tab and History both search by title and main artist, so when a title repeats they
+can pick a different version of the track, like a live take or a remaster.
 
 After a tap the knob goes back to Now playing and shows what you picked straight away, with the
 art dimmed until Roon starts it.
@@ -101,9 +127,40 @@ Recently played doesn't work with Roon: Roon streams to the WiiM without a queue
 so there's nothing to save. Firing a preset that switches the WiiM's input takes it away from
 Roon, the same as it would from the WiiM Home app.
 
+### TuneIn
+
+The TuneIn page plays radio straight on the WiiM, without Roon. Turn it on in Settings, and it
+sits after Library in the swipe order. It has three tabs:
+
+- **Favorites** are stations you starred, up to 30, in the order you starred them. They're kept
+  in the knob's flash, so they survive reboots and updates. TuneIn's own account favorites need a
+  sign-in the knob doesn't have, so it keeps its own list.
+- **Local** lists stations near you. TuneIn works out where you are from your IP address.
+- **Browse** drills into TuneIn's directory one level at a time: Music, Talk, Sports, By
+  Location and By Language. A back row at the top of each level goes up one. Podcasts are left
+  out, since episodes need seeking and a queue the knob doesn't have.
+
+Tap a station to play it. The knob goes back to Now playing and shows the station name with the
+art dimmed until the WiiM starts it. Hold a station row to star or unstar it, and a star on the
+row shows it's a favorite. You can also star the playing station by holding the art.
+
+The knob asks TuneIn for the station's stream and hands it to the WiiM over UPnP
+`SetAVTransportURI` with the station name, the show on air and the logo as metadata, so Now
+playing and WiiM Home both show the station properly. It unwraps plain-HTTP `.pls` and `.m3u`
+playlists first, since the WiiM's UPnP rejects them. The rare HTTPS playlist falls back to
+`setPlayerCmd:play:`, which plays with no metadata. TuneIn's directory is plain HTTP, so it
+doesn't take one of the knob's two TLS slots. Most station logos are PNGs, so the row thumbnails
+decode PNG as well as JPEG.
+
+The show name is fixed when the station starts and doesn't refresh yet, and the progress ring
+hides because live radio has no duration. TuneIn's OPML API is unofficial, so if it changes, the
+tabs say "Couldn't reach TuneIn".
+
 ## Screenshots
 
-These show the original four-screen layout. The controls now sit over full-screen art.
+These show the original four-screen layout and are out of date. The controls now sit over
+full-screen art, and the Library, TuneIn, Settings and Network pages and the starring aren't
+pictured.
 
 <table>
 <tr>
@@ -199,6 +256,35 @@ plain `wiimknob.local`, so flash those once by IP.
 
 Anything on your LAN can flash the knob while it's awake. To stop that, set `OTA_PASSWORD` in
 `Config.h` and pass it at upload time. `platformio.ini` has the details.
+
+## Debug routes
+
+Besides `/status` and the settings page at `/`, the knob answers a few routes meant for testing
+from a terminal while it's awake. They return JSON, so `curl` is enough. They're plain HTTP with
+no password, like the settings page.
+
+`/tunein` drives the TuneIn page without touching the screen:
+
+- `/tunein?list=favorites`, `list=local` or `list=browse` loads that tab and returns its first
+  12 rows, with each row's title, subtitle, guide ID, whether it's a favorite and whether its
+  thumbnail has loaded.
+- Add `&open=N` to open row N, which plays a station or drills into a Browse level, `&back=1`
+  to go up a level, or `&star=N` to star or unstar row N.
+- `/tunein?id=s21793` plays that station by its TuneIn guide ID and reports the stream URL and
+  metadata it sent.
+- Every response ends with what the knob sees from the WiiM: mode, status, duration, title,
+  artist and art.
+
+`/star` does what holding the art does:
+
+- `/star` on its own says whether the playing item is starred and lists the Library starred tab.
+- `?toggle=1` stars or unstars what's playing and says what it acted on. A `result` of -2 means
+  nothing starrable is playing, and -1 means the list is full.
+- `?play=N` plays row N of the starred tab, and `?remove=N` removes it.
+
+```bash
+curl 'http://wiimknob-a2a8.local/star?toggle=1'
+```
 
 ## Hardware background
 
@@ -383,9 +469,10 @@ and the defaults come from `Config.h`.
   cover saves to flash if it changed. Waking is a full reboot. The saved cover shows dimmed
   while the knob reconnects to the access point it used last, skipping the scan, and the detent
   that woke it counts as a volume step once the volume is known.
-- **On USB power** the knob stays awake. There's no screen-off or sleep, just the dim. Modem
-  sleep is off too, since it adds 100-400ms to every WiiM request, and status polls every half
-  second. It also stays reachable for over-the-air updates.
+- **On USB power** the knob stays awake and never deep-sleeps. The screen dims as usual and
+  turns off after the Screen off on USB timeout, 10 minutes by default, or never if you set it
+  to Never. Modem sleep is off too, since it adds 100-400ms to every WiiM request, and status
+  polls every half second. It also stays reachable for over-the-air updates.
 - **Low battery.** If the voltage stays under the cutoff for 15 seconds, the knob shows "Battery
   low" and sleeps. A wake within 0.05V of the cutoff goes straight back to sleep without starting
   Wi-Fi. The cutoff is 3.45V until a calibration run learns one for your battery.
@@ -488,7 +575,7 @@ include/
   Config.h.example  defaults and optional Wi-Fi/WiiM fallback (copy to Config.h)
   lv_conf.h         LVGL configuration
 src/
-  main.cpp          setup/loop: Wi-Fi, polling, input wiring, OTA, the /status debug routes
+  main.cpp          setup/loop: Wi-Fi, polling, input wiring, OTA, /status, /tunein and /star
   display/          QSPI bus + ST77916 panel bring-up, DMA flush task, PWM backlight
   haptics/          DRV2605L haptic feedback
   input/            knob (pulse decoding) and touch (CST816D) drivers
@@ -497,11 +584,13 @@ src/
   settings/         the Settings page values, kept in NVS
   wiim/             WiiM HTTP/UPnP client, the two network tasks, album art fetch/decode,
                     and the recently played history
-  roon/             Roon discovery, WebSocket and MOO client, history, browse and playback,
-                    and the small-cover cache
+  roon/             Roon discovery, WebSocket and MOO client, history, starred tracks, browse
+                    and playback, and the small-cover cache (JPEG and PNG)
+  tunein/           TuneIn directory client, station favorites and stream playlist unwrapping
   web/              the settings page at / and its JSON API
   ui/               the LVGL pages and gesture navigation (UiSettings.cpp: settings,
-                    network and setup screens; UiLibrary.cpp: the Library page)
+                    network and setup screens; UiLibrary.cpp: the tabbed Library and TuneIn
+                    pages)
     fonts/            generated fonts for most scripts, plus icon fonts
 scripts/
   make_fonts.py     regenerates the text fonts
@@ -517,6 +606,9 @@ scripts/
 - **Play/pause for Connect sources.** Qobuz Connect reports "none" whether it's playing or
   paused, so the knob guesses from whether the track position is moving. The icon catches up
   about 2 seconds after a pause. Other Connect sources may do the same.
+- **Radio Now playing.** Show the station logo full screen, a LIVE label instead of the ring,
+  refresh the show name, and let prev, next and swipes step through TuneIn favorites.
+  `docs/plans/tunein-page.md` has the plan.
 - **More from Roon.** "Start Radio" from the current track and browsing albums are both in the
   browse API the knob already uses.
 - **Rare characters.** The CJK font only holds the common sets, so an uncommon character in a
