@@ -74,6 +74,10 @@ While Roon is the WiiM's source:
 - Skip and play/pause go to Roon, and the progress ring follows Roon's position.
 - Shuffle and repeat buttons sit either side of the battery icon on the controls. White means on.
   Repeat cycles off, all and one, and shows a small 1 for one.
+- Hold play/pause to start Roon Radio from the current track. The knob finds the track through
+  Roon's library search, the same way History does, and picks its "Start Radio" action, so Roon
+  keeps playing similar music after it. A notice says when the radio is on, or that it couldn't
+  find the track. Without Roon, a hold is just a slow tap.
 - Volume still goes straight to the WiiM, whatever's playing.
 
 The Library page has four tabs:
@@ -517,8 +521,8 @@ scripts/
 - **Play/pause for Connect sources.** Qobuz Connect reports "none" whether it's playing or
   paused, so the knob guesses from whether the track position is moving. The icon catches up
   about 2 seconds after a pause. Other Connect sources may do the same.
-- **More from Roon.** "Start Radio" from the current track and browsing albums are both in the
-  browse API the knob already uses.
+- **More from Roon.** Browsing albums is in the browse API the knob already uses, and Start
+  Radio could work from a History or Up next row as well as the current track.
 - **Rare characters.** The CJK font only holds the common sets, so an uncommon character in a
   name shows as a blank. Arabic, Hebrew, Thai and the Indic scripts aren't covered at all, and
   Arabic and Hebrew would also need right-to-left layout.
