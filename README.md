@@ -69,7 +69,8 @@ in Roon's apps.
 - It learns its own battery. One calibration run from full to empty replaces the generic LiPo
   curve and sets the low-battery cutoff.
 - You can update it over Wi-Fi, and `http://wiimknob-a2a8.local/status` shows Wi-Fi, memory,
-  battery, the learned curve and a boot log.
+  battery, the learned curve and a boot log. `/tunein` and `/star` drive TuneIn and starring
+  from a terminal; see [Debug routes](#debug-routes).
 - `http://wiimknob-a2a8.local/` is a settings page: brightness, timeouts, pages, the Roon zone and
   battery calibration, plus what's playing. It links to the other knobs and the Roon Visualizer
   on the network. It's only up while the knob is awake, so on battery it goes away with the
@@ -96,8 +97,8 @@ While Roon is the WiiM's source:
 
 The Library page has five tabs. From left to right:
 
-- **★ (starred)** lists the tracks you starred by holding the art, in the order you starred them, up
-  to 50. It
+- **★ (starred)** lists the tracks you starred by holding the art, in the order you starred
+  them, up to 50. It
   plays them the same way History does, by searching Roon's library for the title and artist.
   Hold a row to unstar it.
 - **History** lists every track that played on the WiiM's zone while the knob was connected,
